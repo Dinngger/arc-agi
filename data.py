@@ -1,11 +1,13 @@
 import os
 import json
-from typing import Dict
+from typing import Dict, Set
 
 class Image:
     def __init__(self, list):
         self.list = list
         self.shape = (len(list), len(list[0]))
+    def color_set(self) -> Set[int]:
+        return set(x for row in self.list for x in row)
     def __getitem__(self, index):
         assert len(index) == 2
         if index[0] >= self.shape[0] or index[1] >= self.shape[1]:

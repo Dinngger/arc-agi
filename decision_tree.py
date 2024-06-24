@@ -47,6 +47,7 @@ class LinearRegression:
         return y.argmax(axis=1)
     def score(self):
         s = np.abs(self.y - self.x.transpose(0, 2, 1) @ self.A - self.b).sum()
+        s += max((np.abs(self.A) > 1e-6).sum() - 1, 0) * 1e-6
         return s
 
 class Node:
@@ -56,6 +57,25 @@ class Node:
         self.x = x
         self.y = y
         self.possible_y = np.unique(self.y)
+    def gen_conditions(self):
+        possible_cond = []
+        single_count = [np.count_nonzero(self.x[:, i]) for i in range(self.d)]
+        possible_cond.extend([i for i in range(self.d) if single_count[i] > 0])
+        double_counts = [np.count_nonzero(self.x[:, [i, j]], axis=1) for i, j in [(1, 7), (3, 5), (1, 3), (3, 7), (7, 5), (5, 1)]]
+        double_counts = [[np.equal(double_count, i).sum() for i in [0, 1, 2]] for double_count in double_counts]
+        if double_counts[0][2] > 0:
+            possible_cond.append(-1)
+        if double_counts[1][2] > 0:
+            possible_cond.append(-2)
+        quad_count = np.count_nonzero(self.x[:, [1, 3, 5, 7]], axis=1)
+        quad_count = [np.equal(quad_count, i).sum() for i in [0, 1, 2, 3, 4]]
+        if quad_count[4] > 0:
+            possible_cond.append(-4)
+        if sum([double_count[2] > 0 for double_count in double_counts]) > 1:
+            possible_cond.append(-3)
+            possible_cond.append(-5)
+        possible_cond.append(-6)
+        return possible_cond
     def mask(self, x, idx):
         # 0 1 2
         # 3 4 5
@@ -66,18 +86,28 @@ class Node:
         if idx >= 0:
             res = x[:, idx] == 0
         elif idx == -1:
-            res = np.logical_and(x[:, 4], np.count_nonzero(x[:, [1, 3, 5, 7]], axis=1) >= 2)
-        elif idx == -2:
-            res = np.count_nonzero(x[:, [1, 3, 5, 7]], axis=1) < 4
-        elif idx == -3:
-            res = np.count_nonzero(x[:, [1, 3, 5, 7]], axis=1) >= 2
-        elif idx == -4:
             res = np.count_nonzero(x[:, [1, 7]], axis=1) >= 2
-        elif idx == -5:
+        elif idx == -2:
             res = np.count_nonzero(x[:, [3, 5]], axis=1) >= 2
+        elif idx == -3:
+            res = np.logical_and(x[:, 4], np.count_nonzero(x[:, [1, 3, 5, 7]], axis=1) >= 2)
+        elif idx == -4:
+            res = np.count_nonzero(x[:, [1, 3, 5, 7]], axis=1) < 4
+        elif idx == -5:
+            res = np.count_nonzero(x[:, [1, 3, 5, 7]], axis=1) >= 2
+        elif idx == -6:
+            res = np.any(np.equal(x[:, [4]], x[:, [1, 3, 5, 7]]), axis=1)
         if x.shape[0] == 1:
             return res[0]
         return res
+    def mask_gini(self, idx):
+        # 描述分割条件的偏见程度
+        if idx <= -3:
+            return 1 / 4
+        elif idx < 0:
+            return 1 / 2
+        else:
+            return 1
     def p(self):
         cnt = {y:0 for y in self.possible_y}
         for i in self.y:
@@ -110,23 +140,30 @@ class Node:
         mask = self.mask(self.x, split_type)
         a = Node(self.x[mask], self.y[mask])
         b = Node(self.x[~mask], self.y[~mask])
-        return (a.gini() * a.n + b.gini() * b.n) / self.n
+        return (a.gini() * a.n + b.gini() * b.n) / self.n + self.mask_gini(split_type) * 1e-3
     def split(self, depth=0):
+        if DEBUG and depth > 0:
+            print(self.x)
+            print(self.y)
         if depth >= 10:
             print('Max depth reached')
             return
         minimal_gini = self.gini()
         if DEBUG: print(f'Splitting node with gini = {minimal_gini:.5f}')
-        if minimal_gini < 1e-6:
+        if minimal_gini < 1e-5:
             return minimal_gini
         best_feature_idx = None
-        for i in range(-5, 9):
+        for i in self.gen_conditions():
             gini = self.try_split(i)
             if DEBUG: print(f'  Trying feature {i}, gini = {gini:.5f}')
             if gini < minimal_gini:
                 minimal_gini = gini
                 best_feature_idx = i
         if best_feature_idx is None:
+            if DEBUG:
+                print(self.x)
+                print(self.y)
+                print('No split found')
             return
         self.split_type = best_feature_idx
         mask = self.mask(self.x, best_feature_idx)
@@ -152,5 +189,9 @@ if __name__ == '__main__':
     from data import *
     from concept import *
     from reasoning import *
-    data = get_data(True)['7f4411dc']
+    data = get_data(True)['3aa6fb7a']
     node = ColorMap.get_all_patterns(data.train)
+    if node:
+        print(node.node)
+    else:
+        print('No node generated')

@@ -67,7 +67,7 @@ class ColorMap:
         # print(node)
         return ColorMap(node)
 
-class PositionMap:  # include Resize, Rotate, Translate
+class PositionMap:  # include Resize, Rotate, Mirror, Translate
     """find correct position map logic, better in rigid transform."""
     def __init__(self, axis):
         assert axis in [0, 1], axis
@@ -78,5 +78,3 @@ class PositionMap:  # include Resize, Rotate, Translate
         f = lambda i, j: img[h-i-1, j] if self.axis == 0 else img[i, w-j-1]
         return Image.generate(f, img.shape)
 
-class Region:
-    pass
