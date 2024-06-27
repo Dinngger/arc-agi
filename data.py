@@ -6,15 +6,35 @@ class Image:
     def __init__(self, list):
         self.list = list
         self.shape = (len(list), len(list[0]))
-    def color_set(self) -> Set[int]:
-        return set(x for row in self.list for x in row)
+        self.color_count()
+    def color_count(self) -> Set[int]:
+        color_count = {}
+        for row in self.list:
+            for x in row:
+                if x not in color_count:
+                    color_count[x] = 0
+                color_count[x] += 1
+        most_color = max(color_count, key=color_count.get)
+        self.background_color = 0 if 0 in color_count else most_color   # maybe just try the two choices
+        if self.shape[0] <= 3 or self.shape[1] <= 3:
+            self.background_color = 0
+        self.color_set = set(color_count.keys())
+    def copy(self):
+        return Image(self.list.copy())
     def __getitem__(self, index):
         assert len(index) == 2
         if index[0] >= self.shape[0] or index[1] >= self.shape[1]:
-            return 0
+            return self.background_color
         if index[0] < 0 or index[1] < 0:
-            return 0
+            return self.background_color
         return self.list[index[0]][index[1]]
+    def __setitem__(self, index, value):
+        assert len(index) == 2
+        if index[0] >= self.shape[0] or index[1] >= self.shape[1]:
+            raise IndexError
+        if index[0] < 0 or index[1] < 0:
+            raise IndexError
+        self.list[index[0]][index[1]] = value
     def __eq__(self, value) -> bool:
         return self.list == value.list
     def __repr__(self) -> str:
@@ -46,3 +66,9 @@ def get_data(train=True) -> Dict[str, Data]:
         with open(f'{path}/{fn}') as f:
             data[fn.rstrip('.json')] = Data(json.load(f))
     return data
+
+
+if __name__ == '__main__':
+    data = get_data(train=True)['ce602527']
+    for s in data.train:
+        print(s.input.background_color)

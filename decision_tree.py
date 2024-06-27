@@ -67,14 +67,16 @@ class Node:
             possible_cond.append(-1)
         if double_counts[1][2] > 0:
             possible_cond.append(-2)
-        quad_count = np.count_nonzero(self.x[:, [1, 3, 5, 7]], axis=1)
-        quad_count = [np.equal(quad_count, i).sum() for i in [0, 1, 2, 3, 4]]
-        if quad_count[4] > 0:
+        quad_counts = [np.count_nonzero(self.x[:, [1, 3, 5, 7]], axis=1)]
+        # quad_counts.extend([np.count_nonzero(self.x[:, [i, i+1, i+3, i+4]], axis=1) for i in [0, 1, 3, 4]])
+        quad_counts = [[np.equal(quad_count, i).sum() for i in [0, 1, 2, 3, 4]] for quad_count in quad_counts]
+        if quad_counts[0][4] > 0:
             possible_cond.append(-4)
         if sum([double_count[2] > 0 for double_count in double_counts]) > 1:
             possible_cond.append(-3)
             possible_cond.append(-5)
         possible_cond.append(-6)
+        possible_cond.append(-7)
         return possible_cond
     def mask(self, x, idx):
         # 0 1 2
@@ -97,6 +99,14 @@ class Node:
             res = np.count_nonzero(x[:, [1, 3, 5, 7]], axis=1) >= 2
         elif idx == -6:
             res = np.any(np.equal(x[:, [4]], x[:, [1, 3, 5, 7]]), axis=1)
+        elif idx == -7:
+            res = []
+            for i in [0, 1, 3, 4]:
+                y = np.equal(x[:, i], x[:, i+1])
+                y = np.logical_and(y, np.equal(x[:, i], x[:, i+3]))
+                y = np.logical_and(y, np.equal(x[:, i], x[:, i+4]))
+                res.append(y)
+            res = np.any(res, axis=0)
         if x.shape[0] == 1:
             return res[0]
         return res
@@ -189,7 +199,7 @@ if __name__ == '__main__':
     from data import *
     from concept import *
     from reasoning import *
-    data = get_data(True)['3aa6fb7a']
+    data = get_data(True)['91714a58']
     node = ColorMap.get_all_patterns(data.train)
     if node:
         print(node.node)

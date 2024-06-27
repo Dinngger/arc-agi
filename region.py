@@ -1,4 +1,6 @@
 import numpy as np
+from typing import Tuple
+from dataclasses import dataclass
 
 
 def easy_region(img):
@@ -28,11 +30,26 @@ def easy_region(img):
                             stack.append((i, j))
     return region
 
+@dataclass
+class RegionInfo:
+    size: int
+    color: int
+    level: int
+    top: int
+    left: int
+    bottom: int
+    right: int
+    # 不应该做数学、应该做几何。
+    # def to_numpy(self):
+    #     onehot_color = np.eye(10)[self.color]
+    #     return np.array([self.size, *onehot_color, self.level,
+    #                      self.top, self.left, self.bottom, self.right])
 
 class Region:
     def __init__(self, img):
         self.img = img
         self.region = -np.ones(img.shape, int)
+        self.region_info: List[RegionInfo] = []
         self.level = np.zeros(img.shape, int)
         self.current_region = -1
         boundary = []
@@ -42,8 +59,12 @@ class Region:
         for y in range(img.shape[1]):
             boundary.append((0, y))
             boundary.append((img.shape[0]-1, y))
-        self.grow(boundary, 0)
-        self.easy_region = easy_region(self.level)
+        bg_boundary = [(x, y) for x, y in boundary if img[x, y] == img.background_color]
+        if not bg_boundary:
+            print("No background color found in boundary")
+            bg_boundary = boundary
+        self.grow(bg_boundary, 0)
+        # self.easy_region = easy_region(self.level)
     def get_neighbour(self, x, y):
         neighbour = []
         for i in range(x-1, x+2):
@@ -60,6 +81,7 @@ class Region:
                 self.current_region += 1
                 self.region[x, y] = self.current_region
                 self.level[x, y] = level
+                region_info = RegionInfo(1, self.img[x, y], level, x, y, x, y)
                 stack = [(x, y)]
                 while stack:
                     x0, y0 = stack.pop()
@@ -68,10 +90,16 @@ class Region:
                         if self.region[i, j] < 0:
                             if self.img[i, j] == this_color:
                                 self.region[i, j] = self.current_region
+                                region_info.size += 1
+                                region_info.top = min(region_info.top, i)
+                                region_info.left = min(region_info.left, j)
+                                region_info.bottom = max(region_info.bottom, i)
+                                region_info.right = max(region_info.right, j)
                                 self.level[i, j] = level
                                 stack.append((i, j))
                             else:
                                 next_boundary.append((i, j))
+                self.region_info.append(region_info)
         if next_boundary:
             self.grow(next_boundary, level+1)
         return self.region
@@ -81,9 +109,10 @@ if __name__ == '__main__':
     from data import *
     from concept import *
     from reasoning import *
-    data = get_data(True)['7e0986d6']
-    print(data.train[0].input)
-    exemple = Region(np.array(data.train[0].input.list))
+    data = get_data(True)['8e1813be']
+    print(data.train[0].output)
+    exemple = Region(data.train[0].output)
     print(exemple.region)
+    print(exemple.region_info)
     print(exemple.level)
     print(exemple.easy_region)
