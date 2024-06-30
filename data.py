@@ -20,19 +20,26 @@ class Image:
             self.background_color = 0
         self.color_set = set(color_count.keys())
     def copy(self):
-        return Image(self.list.copy())
+        return Image([[x for x in row] for row in self.list])
+    def subimage(self, top, left, bottom, right):
+        sub = Image([[self.list[i][j] for j in range(left, right+1)] for i in range(top, bottom+1)])
+        return sub
+    def pattern3x3(self, i, j):
+        pattern = []
+        for x in range(-1, 2):
+            for y in range(-1, 2):
+                pattern.append(self[i+x, j+y])
+        return pattern
+    def in_bound(self, i, j):
+        return 0 <= i < self.shape[0] and 0 <= j < self.shape[1]
     def __getitem__(self, index):
         assert len(index) == 2
-        if index[0] >= self.shape[0] or index[1] >= self.shape[1]:
-            return self.background_color
-        if index[0] < 0 or index[1] < 0:
+        if not self.in_bound(index[0], index[1]):
             return self.background_color
         return self.list[index[0]][index[1]]
     def __setitem__(self, index, value):
         assert len(index) == 2
-        if index[0] >= self.shape[0] or index[1] >= self.shape[1]:
-            raise IndexError
-        if index[0] < 0 or index[1] < 0:
+        if not self.in_bound(index[0], index[1]):
             raise IndexError
         self.list[index[0]][index[1]] = value
     def __eq__(self, value) -> bool:
@@ -42,11 +49,18 @@ class Image:
         for row in self.list:
             s += ''.join(str(x) for x in row) + '\n'
         return s[:-1]
+    def self_generate(self, f):
+        img = [[f(self, i, j) for j in range(self.shape[1])]
+               for i in range(self.shape[0])]
+        return Image(img)
     @staticmethod
     def generate(f, shape):
         img = [[f(i, j) for j in range(shape[1])]
                for i in range(shape[0])]
         return Image(img)
+    @staticmethod
+    def zeros(shape):
+        return Image.generate(lambda i, j: 0, shape)
 
 class Sample:
     def __init__(self, s):
