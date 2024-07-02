@@ -198,12 +198,6 @@ def predict_output_size(data: Data):
     return None
 
 
-class RegionMap:
-    @staticmethod
-    def fit(samples: List[Sample]):
-        pass
-
-
 def test_single_prediction(k):
     from data import get_data
     data = get_data(True)[k]

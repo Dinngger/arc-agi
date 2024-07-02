@@ -1,5 +1,6 @@
 from data import *
 from region import Region
+from registration import RotateType, transform
 
 def solve_5c2c9af4(img: Image):
     region = Region(img)
@@ -209,10 +210,75 @@ def solve_264363fd(img: Image):
                 res[i, j] = canvas[i-ri.top, j-ri.left]
     return res
 
+def solve_c9f8e694(img: Image):
+    def f(i, j):
+        if img[i, j] != 5:
+            return img[i, j]
+        return img[i, 0]
+    return img.generate(f, img.shape)
+
+def solve_60b61512(img: Image):
+    for ri in Region(img).region_info:
+        if ri.level == 0:
+            continue
+        for i in range(ri.top, ri.bottom+1):
+            for j in range(ri.left, ri.right+1):
+                if img[i, j] == 0:
+                    img[i, j] = 7
+    return img
+
+def solve_f8b3ba0a(img: Image):
+    region = Region(img).region_info
+    colors = [ri.color for ri in region if ri.level != 0]
+    color_count = {}
+    for c in colors:
+        color_count[c] = color_count.get(c, 0) + 1
+    assert len(color_count) == 4
+    color_sort = sorted(color_count.items(), key=lambda x: x[1], reverse=True)
+    cs = [[c[0]] for c in color_sort]
+    return Image(cs[1:])
+
+def solve_4938f0c2(img: Image):
+    region = Region(img)
+    for ri in region.region_info:
+        if ri.color == 3:
+            center = ri
+            break
+    cx, cy = center.center(strict=False)
+    for i in range(ri.top):
+        for j in range(ri.left):
+            if img[i, j] != 0:
+                for t in [RotateType.LeftRight, RotateType.UpDown, RotateType.Center]:
+                    ti, tj = transform(i - cx, j - cy, t)
+                    img[int(cx + ti), int(cy + tj)] = 2
+    return img
+
+def solve_d406998b(img: Image):
+    for j in range(img.shape[1]):
+        nj = img.shape[1] - 1 - j
+        for i in range(img.shape[0]):
+            if img[i, nj] != 0 and j % 2 == 0:
+                img[i, nj] = 3
+    return img
+
+def solve_868de0fa(img: Image):
+    region = Region(img)
+    for ri in region.region_info:
+        if ri.level == 2:
+            assert ri.width == ri.heigth
+            if ri.width % 2 == 0:
+                c = 2
+            else:
+                c = 7
+            for i in range(ri.top, ri.bottom+1):
+                for j in range(ri.left, ri.right+1):
+                    img[i, j] = c
+    return img
 
 if __name__ == '__main__':
     easy_ks = ['5c2c9af4', '623ea044', 'dbc1a6ce', 'bdad9b1f', '1e0a9b12',
-               'a48eeaf7', 'bda2d7a6', 'f35d900a', '264363fd']
+               'a48eeaf7', 'bda2d7a6', 'f35d900a', '264363fd', 'c9f8e694',
+               '60b61512', 'f8b3ba0a', '4938f0c2', 'd406998b', '868de0fa']
     hard_ks = ['ef135b50', '3befdf3e']
     datas = get_data(True)
     for k in easy_ks:

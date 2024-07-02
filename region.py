@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Tuple, List
 from dataclasses import dataclass
+from data import Image
 
 DEBUG = False
 
@@ -22,10 +23,22 @@ class RegionInfo:
     @property
     def width(self):
         return self.right - self.left + 1
-    def center(self):
-        assert self.heigth % 2 == 1 and self.width % 2 == 1
-        return (self.top + self.bottom) // 2, (self.left + self.right) // 2
+    def center(self, strict=True):
+        if strict:
+            assert self.heigth % 2 == 1 and self.width % 2 == 1
+            return (self.top + self.bottom) // 2, (self.left + self.right) // 2
+        else:
+            return (self.top + self.bottom) / 2, (self.left + self.right) / 2
 
+def region_background_color(img: Image, ri: RegionInfo):
+    color_count = {}
+    for x, y in ri.pixels:
+        c = img[x, y]
+        if c not in color_count:
+            color_count[c] = 0
+        color_count[c] += 1
+    most_color = max(color_count, key=color_count.get)
+    return 0 if 0 in color_count else most_color   # maybe just try the two choices
 
 def easy_region(img):
     def get_neighbour(x, y):
@@ -108,6 +121,8 @@ class Region:
             level_img[level_img > level] = level
             level_img[level_img < level] = 0
             hr, hr_info = easy_region(level_img)
+            for hri in hr_info:
+                hri.color = region_background_color(img, hri)
             self.hierarchical_regions.append(hr)
             self.hierarchical_region_infos.append(hr_info)
     def get_neighbour(self, x, y):

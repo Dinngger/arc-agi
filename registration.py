@@ -1,5 +1,6 @@
+from enum import Enum
 from region import Region
-from data import Sample
+from data import Sample, Image
 
 DEBUG = False
 """find correct position map logic, include Resize, Rotate, Mirror, Translate."""
@@ -13,26 +14,35 @@ def same_color_set(img, color):
                 res.append((i, j))
     return res
 
-def resize(x, y, scale):
-    return x * scale, y * scale
+class RotateType(Enum):
+    Nothing = 0
+    UpDown = 1
+    LeftRight = 2
+    Center = 3      # same with rotate 180 degree
+    Diagonal = 4
+    Right = 5
+    Left = 6
+    AntiDiagonal = 7
 
-def rotate(x, y, type):
-    if type == 0:
-        return x, y
-    elif type == 1:
-        return -x, y
-    elif type == 2:
-        return x, -y
-    elif type == 3:
-        return -x, -y
-    elif type == 4:
-        return y, x
-    elif type == 5:
-        return -y, x
-    elif type == 6:
-        return y, -x
-    elif type == 7:
-        return -y, -x
+rigid_rotate_types = [RotateType.Nothing, RotateType.Left, RotateType.Right, RotateType.Center]
+
+def transform(x, y, type, scale=1, dx=0, dy=0):
+    if type == RotateType.Nothing:
+        return x * scale + dx, y * scale + dy
+    elif type == RotateType.UpDown:
+        return -x * scale + dx, y * scale + dy
+    elif type == RotateType.LeftRight:
+        return x * scale + dx, -y * scale + dy
+    elif type == RotateType.Center:
+        return -x * scale + dx, -y * scale + dy
+    elif type == RotateType.Diagonal:
+        return y * scale + dx, x * scale + dy
+    elif type == RotateType.Right:
+        return -y * scale + dx, x * scale + dy
+    elif type == RotateType.Left:
+        return y * scale + dx, -x * scale + dy
+    elif type == RotateType.AntiDiagonal:
+        return -y * scale + dx, -x * scale + dy
 
 
 def find_position_map(s: Sample):
@@ -42,7 +52,7 @@ def find_position_map(s: Sample):
     cs = s.output.color_set.union(s.input.color_set)
     # print(cs)
     ips = [same_color_set(s.input, c) for c in cs]
-    ips = [[rotate(x, y, 0) for x, y in ip] for ip in ips]
+    ips = [[transform(x, y, RotateType.Nothing) for x, y in ip] for ip in ips]
     ops = [same_color_set(s.output, c) for c in cs]
     ts = {}
     # 计算偏移的频率
@@ -103,10 +113,8 @@ def find_position_map(s: Sample):
     return input_region_offsets
 
 
-if __name__ == '__main__':
+def test_find_position_map():
     from data import get_data
-    from concept import *
-    from reasoning import *
     datas = get_data(True)
     ks = ['952a094c', '681b3aeb', '05f2a901', '2dc579da', '3bdb4ada',
           'be94b721', 'ea786f4a', '4347f46a', '98cf29f8', 'a87f7484',
@@ -121,3 +129,63 @@ if __name__ == '__main__':
             input_region_offsets = find_position_map(s)
             if input_region_offsets:
                 print(input_region_offsets)
+
+
+def solve_7df24a62(img: Image):
+    region = Region(img)
+    for ri in region.region_info:
+        if ri.color == 1:
+            template_ri = ri
+            break
+    template = [(x, y) for x in range(template_ri.top, template_ri.bottom+1)
+                       for y in range(template_ri.left, template_ri.right+1)
+                       if img[x, y] == 4]
+    res = img.copy()
+    for ri in region.region_info:
+        if ri.color != 4:
+            continue
+        for x, y in ri.pixels:
+            for x0, y0 in template:
+                for rt in rigid_rotate_types:
+                    tx0, tx1 = transform(x0, y0, rt)
+                    dx, dy = x - tx0, y - tx1
+                    for x1, y1 in template:
+                        if img[transform(x1, y1, rt, 1, dx, dy)] != 4:
+                            break
+                    else:
+                        for x2, y2 in template_ri.pixels:
+                            tx2, ty2 = transform(x2, y2, rt, 1, dx, dy)
+                            if res.in_bound(tx2, ty2) and res[tx2, ty2] == 0:
+                                res[tx2, ty2] = 1
+    return res
+
+
+def test_solvers():
+    from data import get_data
+    datas = get_data(True)
+    easy_ks = ['7df24a62']
+    for k in easy_ks:
+        solver = globals()[f'solve_{k}']
+        data = datas[k]
+        for s in data.train:
+            pred = solver(s.input)
+            if pred != s.output:
+                print('fail on ', k)
+                print('pred')
+                print(pred)
+                print('ground truth')
+                print(s.output)
+                break
+        for s in data.test:
+            pred = solver(s.input)
+            if pred != s.output:
+                print('fail on ', k)
+                print('pred')
+                print(pred)
+                print('ground truth')
+                print(s.output)
+                break
+        print('success on ', k)
+
+if __name__ == '__main__':
+    test_solvers()
