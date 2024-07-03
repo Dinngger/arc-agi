@@ -1,5 +1,5 @@
 from data import *
-from region import Region
+from region import Region, RegionInfo
 from registration import RotateType, transform
 
 def solve_5c2c9af4(img: Image):
@@ -46,13 +46,27 @@ def find_nonzero(img: Image, i, j, di, dj, zero=0, num=1, return_pos=False, retu
     return 0 if zero == 0 else None
 
 def solve_ef135b50(img: Image):
-    def f(i, j):
-        if img[i, j] == 2:
-            return 2
-        if find_nonzero(img, i, j, 0, -1) != 0 and find_nonzero(img, i, j, 0, 1) != 0:
-            return 9
-        return 0
-    return img.generate(f, img.shape)
+    region = Region(img).region_info
+    region = [ri for ri in region if ri.color == 2]
+    n = len(region)
+    for i in range(n):
+        for j in range(i+1, n):
+            xsi = set(range(region[i].top, region[i].bottom+1))
+            xsj = set(range(region[j].top, region[j].bottom+1))
+            common_x = xsi & xsj
+            if len(common_x) == 0:
+                continue
+            if region[i].left < region[j].left:
+                common_y = list(range(region[i].right+1, region[j].left))
+            else:
+                common_y = list(range(region[j].right+1, region[i].left))
+            for x, y in [(x, y) for x in common_x for y in common_y]:
+                if img[x, y] != 0:
+                    break
+            else:
+                for x, y in [(x, y) for x in common_x for y in common_y]:
+                    img[x, y] = 9
+    return img
 
 def solve_623ea044(img: Image):
     for i in range(img.shape[0]):
@@ -121,25 +135,21 @@ def solve_a48eeaf7(img: Image):
     return res
 
 def solve_3befdf3e(img: Image):
-    region = Region(img)
-    for ri in region.region_info:
-        if ri.level == 1:
-            outer_color = ri.color
-        elif ri.level == 2:
-            inner_color = ri.color
-            inner_width = ri.bottom - ri.top + 1
-    def f(i, j):
-        if img[i, j] == outer_color:
-            return inner_color
-        if img[i, j] == inner_color:
-            return outer_color
-        for dx, dy in [(0, -1), (0, 1), (-1, 0), (1, 0)]:
-            if find_nonzero(img, i, j, dx, dy) == outer_color:
-                x, y = find_nonzero(img, i, j, dx, dy, return_pos=True)
-                if abs(i - x) + abs(j - y) <= inner_width:
-                    return outer_color
-        return 0
-    return img.generate(f, img.shape)
+    region = Region(img).region_info
+    res = Image.zeros(img.shape)
+    for outer in [ri for ri in region if ri.level == 1]:
+        inner = [ri for ri in region if ri.level == 2 and ri.in_region_box(outer)]
+        assert len(inner) == 1
+        inner = inner[0]
+        outer.paint_on(res, color=inner.color)
+        inner.paint_on(res, color=outer.color)
+        assert inner.width == inner.width
+        width = inner.width
+        RegionInfo.box_region(outer.top - width, outer.left, outer.top-1, outer.right, outer.color).paint_on(res)
+        RegionInfo.box_region(outer.top, outer.left - width, outer.bottom, outer.left-1, outer.color).paint_on(res)
+        RegionInfo.box_region(outer.bottom+1, outer.left, outer.bottom+width, outer.right, outer.color).paint_on(res)
+        RegionInfo.box_region(outer.top, outer.right+1, outer.bottom, outer.right+width, outer.color).paint_on(res)
+    return res
 
 def solve_bda2d7a6(img: Image):
     region = Region(img)
@@ -275,31 +285,161 @@ def solve_868de0fa(img: Image):
                     img[i, j] = c
     return img
 
-if __name__ == '__main__':
-    easy_ks = ['5c2c9af4', '623ea044', 'dbc1a6ce', 'bdad9b1f', '1e0a9b12',
-               'a48eeaf7', 'bda2d7a6', 'f35d900a', '264363fd', 'c9f8e694',
-               '60b61512', 'f8b3ba0a', '4938f0c2', 'd406998b', '868de0fa']
-    hard_ks = ['ef135b50', '3befdf3e']
-    datas = get_data(True)
-    for k in easy_ks:
-        solver = globals()[f'solve_{k}']
-        data = datas[k]
-        for s in data.train:
-            pred = solver(s.input)
-            if pred != s.output:
-                print('fail on ', k)
-                print('pred')
-                print(pred)
-                print('ground truth')
-                print(s.output)
+def solve_ff805c23(img: Image):
+    unknown = RegionInfo.from_color(img, 1)
+    res = Image.zeros((unknown.heigth, unknown.width))
+    cx, cy = img.center()
+    for x, y in unknown.pixels:
+        for t in [RotateType.LeftRight, RotateType.UpDown]:
+            ti, tj = transform(x - cx, y - cy, t)
+            ti, tj = cx + ti, cy + tj
+            if img.in_bound(int(ti), int(tj)) and img[int(ti), int(tj)] != 1:
+                res[x - unknown.top, y - unknown.left] = img[int(ti), int(tj)]
                 break
-        for s in data.test:
-            pred = solver(s.input)
-            if pred != s.output:
-                print('fail on ', k)
-                print('pred')
-                print(pred)
-                print('ground truth')
-                print(s.output)
-                break
-        print('success on ', k)
+    return res
+
+def solve_e8593010(img: Image):
+    region = Region(img, strict_neighbour=True)
+    for ri in region.region_info:
+        if ri.color == 0:
+            c = 4 - ri.size
+            for i, j in ri.pixels:
+                img[i, j] = c
+    return img
+
+def find_minimal_repetitive_pattern(seq):
+    for cycle in range(1, len(seq) + 1):
+        if all(seq[i] == seq[i % cycle] for i in range(len(seq))):
+            return cycle
+    raise ValueError("No minimal repetitive pattern found.")
+
+def solve_017c7c7b(img: Image):
+    cycle = find_minimal_repetitive_pattern(img.list)
+    return Image.generate(lambda i, j: 2 if img[i % cycle, j] else 0, (9, 3))
+
+def solve_ec883f72(img: Image):
+    region = Region(img).region_info
+    ris = [ri for ri in region if ri.level != 0]
+    inner = min(ris, key=lambda ri: ri.heigth * ri.width)
+    outer = max(ris, key=lambda ri: ri.heigth * ri.width)
+    c = inner.color
+    for (cx, cy), (dx, dy) in outer.corners():
+        cx, cy = cx + dx, cy + dy
+        while img.in_bound(cx, cy):
+            img[cx, cy] = c
+            cx, cy = cx + dx, cy + dy
+    return img
+
+def solve_150deff5(img: Image):
+    region = RegionInfo.from_color(img, 5)
+    draw_types = [0]
+    draw_colors = {0: 8, 1: 2, 2: 2}
+    draw_pos = {0: [(0, 0), (0, 1), (1, 0), (1, 1)],
+                1: [(0, 0), (0, 1), (0, 2)],
+                2: [(0, 0), (1, 0), (2, 0)]}
+    def draw_next(i: Image, t):
+        for x, y in region.pixels:
+            if i[x, y] == 5:
+                if all([i[x+dx, y+dy] == 5 for dx, dy in draw_pos[t]]):
+                    for dx, dy in draw_pos[t]:
+                        i[x+dx, y+dy] = draw_colors[t]
+                    return 1
+                else:
+                    return -1
+        return 0
+    while draw_types:
+        t = draw_types.pop()
+        res = img.copy()
+        for ti in draw_types:
+            assert draw_next(res, ti) == 1
+        r = draw_next(res, t)
+        if r == 1:
+            draw_types.append(t)
+            draw_types.append(0)
+        elif r == 0:
+            return res
+        else:
+            while True:
+                if t < 2:
+                    draw_types.append(t+1)
+                    break
+                else:
+                    if not draw_types:
+                        return None
+                    t = draw_types.pop()
+    return None
+
+def solve_56dc2b01(img: Image):
+    line = RegionInfo.from_color(img, 2)
+    new_line = line.copy()
+    new_line.color = 8
+    shape = RegionInfo.from_color(img, 3)
+    dir_x = img.shape[0] > img.shape[1]
+    res = Image.zeros(img.shape)
+    line.paint_on(res)
+    if dir_x:
+        if line.top < shape.top:
+            shape.paint_on(res, line.top - shape.top + 1, 0)
+            new_line.paint_on(res, shape.heigth + 1, 0)
+        else:
+            shape.paint_on(res, line.top - shape.bottom - 1, 0)
+            new_line.paint_on(res, -shape.heigth - 1, 0)
+    else:
+        if line.left < shape.left:
+            shape.paint_on(res, 0, line.left - shape.left + 1)
+            new_line.paint_on(res, 0, shape.width + 1)
+        else:
+            shape.paint_on(res, 0, line.left - shape.right - 1)
+            new_line.paint_on(res, 0, -shape.width - 1)
+    return res
+
+def solve_aabf363d(img: Image):
+    c = img[img.height-1, 0]
+    img[img.height-1, 0] = 0
+    for i in range(img.height):
+        for j in range(img.width):
+            if img[i, j] != 0:
+                img[i, j] = c
+    return img
+
+def solve_ba97ae07(img: Image):
+    cs = img.color_set
+    cs.remove(0)
+    ris = [RegionInfo.from_color(img, c) for c in cs]
+    ris = [ri for ri in ris if not ri.full_of_box()]
+    assert len(ris) == 1
+    ri = ris[0]
+    for i in range(ri.top, ri.bottom+1):
+        for j in range(ri.left, ri.right+1):
+            img[i, j] = ri.color
+    return img
+
+def solve_05269061(img: Image):
+    cs = img.color_set
+    cs.remove(0)
+    n = len(cs)
+    color_table = [None, None, None]
+    for i in range(img.height):
+        for j in range(img.width):
+            if img[i, j] != 0:
+                idx = (i + j) % n
+                if color_table[idx] is None:
+                    color_table[idx] = img[i, j]
+                else:
+                    assert color_table[idx] == img[i, j]
+    for i in range(img.height):
+        for j in range(img.width):
+            img[i, j] = color_table[(i + j) % n]
+    return img
+
+def solve_7ddcd7ec(img: Image):
+    region = Region(img, strict_neighbour=True).region_info
+    ris = [ri for ri in region if ri.size == 4]
+    assert len(ris) == 1
+    box = ris[0]
+    for (x, y), (dx, dy) in box.corners():
+        if img[x+dx, y+dy] != 0:
+            while img.in_bound(x+dx, y+dy):
+                img[x+dx, y+dy] = box.color
+                x, y = x+dx, y+dy
+    return img

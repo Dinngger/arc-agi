@@ -6,6 +6,8 @@ class Image:
     def __init__(self, list):
         self.list = list
         self.shape = (len(list), len(list[0]))
+        self.height = self.shape[0]
+        self.width = self.shape[1]
         self.color_count()
     def color_count(self) -> Set[int]:
         color_count = {}
@@ -24,6 +26,8 @@ class Image:
     def subimage(self, top, left, bottom, right):
         sub = Image([[self.list[i][j] for j in range(left, right+1)] for i in range(top, bottom+1)])
         return sub
+    def subimage_of_region(self, region):
+        return self.subimage(region.top, region.left, region.bottom, region.right)
     def pattern3x3(self, i, j):
         pattern = []
         for x in range(-1, 2):
@@ -32,6 +36,8 @@ class Image:
         return pattern
     def in_bound(self, i, j):
         return 0 <= i < self.shape[0] and 0 <= j < self.shape[1]
+    def center(self):
+        return (self.shape[0]-1) / 2, (self.shape[1]-1) / 2
     def __getitem__(self, index):
         assert len(index) == 2
         if not self.in_bound(index[0], index[1]):

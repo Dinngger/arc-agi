@@ -1,5 +1,5 @@
 from enum import Enum
-from region import Region
+from region import Region, RegionInfo
 from data import Sample, Image
 
 DEBUG = False
@@ -159,33 +159,26 @@ def solve_7df24a62(img: Image):
                                 res[tx2, ty2] = 1
     return res
 
+def solve_a1570a43(img: Image):
+    boundary = RegionInfo.from_color(img, 3)
+    obj = RegionInfo.from_color(img, 2)
+    dx = boundary.top - obj.top + 1
+    dy = boundary.left - obj.left + 1
+    res = Image.zeros(img.shape)
+    boundary.paint_on(res)
+    obj.paint_on(res, dx, dy)
+    return res
 
-def test_solvers():
-    from data import get_data
-    datas = get_data(True)
-    easy_ks = ['7df24a62']
-    for k in easy_ks:
-        solver = globals()[f'solve_{k}']
-        data = datas[k]
-        for s in data.train:
-            pred = solver(s.input)
-            if pred != s.output:
-                print('fail on ', k)
-                print('pred')
-                print(pred)
-                print('ground truth')
-                print(s.output)
-                break
-        for s in data.test:
-            pred = solver(s.input)
-            if pred != s.output:
-                print('fail on ', k)
-                print('pred')
-                print(pred)
-                print('ground truth')
-                print(s.output)
-                break
-        print('success on ', k)
+def solve_cf98881b(img: Image):
+    res = Image.zeros((4, 4))
+    dy = -10
+    for c in [1, 9, 4]:
+        RegionInfo.from_color(img, c).paint_on(res, 0, dy)
+        dy += 5
+    return res
 
-if __name__ == '__main__':
-    test_solvers()
+def solve_2013d3e2(img: Image):
+    ris = Region(img).hierarchical_region_infos[1]
+    assert len(ris) == 1
+    ri = ris[0]
+    return Image.generate(lambda i, j: img[i+ri.top, j+ri.left], (3, 3))

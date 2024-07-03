@@ -84,29 +84,3 @@ def solve_88a10436(img: Image):
                 for j in range(ri.left, ri.right+1):
                     res[tx+i-ri.top-1, ty+j-ri.left-1] = img[i, j]
     return res
-
-if __name__ == '__main__':
-    easy_ks = ['c444b776', '6ecd11f4', 'c909285e', '88a10436']
-    datas = get_data(True)
-    for k in easy_ks:
-        solver = globals()[f'solve_{k}']
-        data = datas[k]
-        for s in data.train:
-            pred = solver(s.input)
-            if pred != s.output:
-                print('fail on ', k)
-                print('pred')
-                print(pred)
-                print('ground truth')
-                print(s.output)
-                break
-        for s in data.test:
-            pred = solver(s.input)
-            if pred != s.output:
-                print('fail on ', k)
-                print('pred')
-                print(pred)
-                print('ground truth')
-                print(s.output)
-                break
-        print('success on ', k)

@@ -1,73 +1,10 @@
 import numpy as np
 from typing import List
-from region import Region, RegionInfo
+from region import Region, RegionInfo, combine_regions_in_box
 from data import Image, Sample, Data
 from registration import find_position_map
-from decision_tree import Node
 from celer import Lasso
 
-
-def remove_move_region(img: Image, region: Region, offsets):
-    res = img.copy()
-    for idx in range(region.num):
-        ri = region.region_info[idx]
-        if offsets[idx] and offsets[idx][0] != (0, 0):
-            for i in range(ri.top, ri.bottom + 1):
-                for j in range(ri.left, ri.right + 1):
-                    if region.region[i, j] == idx:
-                        res[i, j] = img.background_color
-    return res
-
-def unique_pattern(img: Image, i0, j0):
-    pattern = img.pattern3x3(i0, j0)
-    for i in range(img.shape[0]):
-        for j in range(img.shape[1]):
-            if i != i0 or j != j0:
-                if img.pattern3x3(i, j) == pattern:
-                    print(f"pattern {pattern} from {i0, j0} is not unique at {i, j}")
-                    return False
-    return True
-
-def find_pattern(img: Image, pattern):
-    pos = []
-    for i in range(img.shape[0]):
-        for j in range(img.shape[1]):
-            if img.pattern3x3(i, j) == pattern:
-                pos.append((i, j))
-    return pos
-
-def learn_move_pattern(samples: List[Sample]):
-    pattern_x = []
-    pattern_y = []
-    for s in samples:
-        region = Region(s.input)
-        offset = find_position_map(s)
-        if offset is None:
-            return
-        img = remove_move_region(s.input, region, offset)
-        # pick a 3x3 region to judge
-        for i in range(region.num):
-            if offset[i] and offset[i][0] != (0, 0):
-                if len(offset[i]) != 1:
-                    return
-                dx, dy = offset[i][0]
-                ri = region.region_info[i]
-                if not unique_pattern(img, ri.top, ri.left):
-                    return
-                if not unique_pattern(img, ri.top + dx, ri.left + dy):
-                    return
-                pattern_x.append(img.pattern3x3(ri.top, ri.left))
-                pattern_y.append(img.pattern3x3(ri.top + dx, ri.left + dy))
-    if not pattern_y:
-        return
-    pattern_x = np.array(pattern_x)
-    pattern_y = np.array(pattern_y)
-    nodes = []
-    for i in range(9):
-        node_i = Node(pattern_x, pattern_y[:, i])
-        assert node_i.split() is not None
-        nodes.append(node_i)
-    return nodes
 
 def region_bool_prediction(samples: List[Sample]):
     # predict weather a region will be left,
@@ -121,36 +58,18 @@ def region_bool_prediction(samples: List[Sample]):
     else:
         print('Success with nonzero:', nonzero)
 
-
-def find_target_pattern(img: Image, nodes: List[Node]):
-    region = Region(img)
-    static_regions = img.copy()
-    for idx in range(region.num):
-        ri = region.region_info[idx]
-        if ri.size == 1:
-            static_regions[ri.top, ri.left] = img.background_color
-    res = static_regions.copy()
-    for idx in range(region.num):
-        ri = region.region_info[idx]
-        if ri.size == 1:
-            pattern = [node.predict(img.pattern3x3(ri.top, ri.left)) for node in nodes]
-            pos = find_pattern(static_regions, pattern)
-            assert len(pos) == 1
-            res[pos[0]] = img[ri.top, ri.left]
-    return res
-
 def paint_region(img: Image, region: RegionInfo, dx, dy):
     for x0, y0 in region.pixels:
         x = x0 + dx - region.top
         y = y0 + dy - region.left
-        if x < 0 or x >= img.shape[0] or y < 0 or y >= img.shape[1]:
+        if not img.in_bound(x, y):
             return False
         if img[x, y] != img.background_color:
             return False
         img[x, y] = region.color
     return True
 
-def try_paint_region(img: Image):
+def solve_681b3aeb(img: Image):
     region_info = Region(img).region_info
     region_info = [ri for ri in region_info if ri.color != img.background_color]
     # 使用深度优先搜索找到不发生碰撞的解
@@ -179,12 +98,34 @@ def try_paint_region(img: Image):
                     x, y = region_pos.pop()
     return None
 
-def move_solver(data: Data):
-    nodes = learn_move_pattern(data.train)
-    if nodes is None:
-        print('pattern not found')
-        return None
-    return lambda x: find_target_pattern(x, nodes)
+def solve_952a094c(img: Image):
+    region = Region(img).region_info
+    box_ri = [ri for ri in region if ri.size > 1 and ri.color != img.background_color]
+    assert len(box_ri) == 1
+    box_ri = box_ri[0]
+    corners = box_ri.corners()
+    opposite_corners = [3, 2, 1, 0]
+    for i in range(4):
+        (tx, ty), (dx, dy) = corners[opposite_corners[i]]
+        tx, ty = tx + dx, ty + dy
+        (sx, sy), (dx, dy) = corners[i]
+        sx, sy = sx - dx, sy - dy
+        img[tx, ty] = img[sx, sy]
+        img[sx, sy] = img.background_color
+    return img
+
+def solve_0b148d64(img: Image):
+    region_info = Region(img).region_info
+    region_info = combine_regions_in_box(region_info)
+    region_info = [ri for ri in region_info if ri.color != img.background_color]
+    region_color_count = {}
+    for ri in region_info:
+        if ri.color not in region_color_count:
+            region_color_count[ri.color] = 0
+        region_color_count[ri.color] += 1
+    single_color_regions = [ri for ri in region_info if region_color_count[ri.color] == 1]
+    assert len(single_color_regions) == 1
+    return img.subimage_of_region(single_color_regions[0])
 
 def predict_output_size(data: Data):
     # constant:
@@ -204,33 +145,8 @@ def test_single_prediction(k):
     print(f"test on {k}")
     region_bool_prediction(data.train)
 
-def test_all(k):
-    from data import get_data
-    datas = get_data(True)
-    data = datas[k]
-    for s in data.train:
-        pred = try_paint_region(s.input)
-        if pred != s.output:
-            print('fail on ', k)
-            print('pred')
-            print(pred)
-            print('ground truth')
-            print(s.output)
-            break
-    for s in data.test:
-        pred = try_paint_region(s.input)
-        if pred != s.output:
-            print('fail on ', k)
-            print('pred')
-            print(pred)
-            print('ground truth')
-            print(s.output)
-            break
-    print('success on ', k)
-
-
 if __name__ == '__main__':
-    move_ks = ['952a094c', '681b3aeb', '05f2a901', '2dc579da',
+    move_ks = ['05f2a901', '2dc579da',
         'be94b721', 'a87f7484',
         '1f85a75f', 'a61ba2ce', '72ca375d', 'beb8660c', '23b5c85d',
         '25ff71a9', '1caeab9d', '1cf80156', 'd89b689b', 'ce602527',
