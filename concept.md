@@ -1,0 +1,93 @@
+- Pixel
+- Image
+    - corner
+    - edge
+- Box/Subimage
+    - from
+        - region
+        - split lines/ crossbar_box
+    - attibution
+        - size
+        - height/width
+        - full/empty
+        - color
+            - all same color
+            - bg color
+        - inner pixels
+        - center
+        - 4 Corner with dir
+            - opposite relationship
+        - 4 side with dir and width
+            - opposite
+        - box/region in/overlap box
+        - maximum box/multibox inner region
+- Region
+    - from
+        - color
+        - level
+        - strict neighbor
+        - in box neighbor
+    - attribution
+        - size
+        - color
+            - all same color
+            - bg color
+    - paint
+        - color
+- Line
+    - 8 Directions
+        - repeat in x + y/ ...
+    - link pixels
+    - extend pixels(start point + dir)
+- Cross/Overlap
+- Big Pixel
+- Repeat
+    - minimal repeat pattern
+        - level order
+        - x/y order
+- Special
+- Count
+    - region color
+- Each Pixel/EmptySpace has its role
+- Template
+    - region
+    - same row/col
+- Move/Copy
+    - to color pixel
+    - in single direction
+    - to be close to something(box)
+    - mirror
+    - regid transform
+    - Anchor point
+- Registration
+- w/o Overlap
+    - Order
+- Paint
+- Color transform
+    - & mask
+- DFS
+- Iter
+    - grow
+    - walk as a agent
+- Sort/Most/Least
+    - object
+        - Size
+        - Count
+- Unknow/OverScreen/Shaded/Noise
+- Symmetry
+    - object
+        - Image
+        - Region
+    - type
+        - mirror
+        - rotate
+- Relationship
+    - region pair
+    - common
+        xs, ys
+    - inner
+        xs, ys
+- Number
+    - Add
+    - Sub
+    - Multiple
