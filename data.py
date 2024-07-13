@@ -1,6 +1,8 @@
 import os
 import json
 from typing import Dict, Set
+import matplotlib.pyplot as plt
+from matplotlib import colors
 
 class Image:
     def __init__(self, list):
@@ -55,6 +57,18 @@ class Image:
         for row in self.list:
             s += ''.join(str(x) for x in row) + '\n'
         return s[:-1]
+    def plot(self, ax, title):
+        cmap = colors.ListedColormap(
+            ['#000000', '#0074D9','#FF4136','#2ECC40','#FFDC00',
+            '#AAAAAA', '#F012BE', '#FF851B', '#7FDBFF', '#870C25'])
+        norm = colors.Normalize(vmin=0, vmax=9)
+        ax.imshow(self.list, cmap=cmap, norm=norm)
+        ax.grid(True,which='both',color='lightgrey', linewidth=0.5)
+        ax.set_yticks([x-0.5 for x in range(1+self.height)])
+        ax.set_xticks([x-0.5 for x in range(1+self.width)])
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_title(title)
     def self_generate(self, f):
         img = [[f(self, i, j) for j in range(self.shape[1])]
                for i in range(self.shape[0])]
@@ -91,4 +105,7 @@ def get_data(train=True) -> Dict[str, Data]:
 if __name__ == '__main__':
     data = get_data(train=True)['ce602527']
     for s in data.train:
-        print(s.input.background_color)
+        s.input.plot(plt.subplot(1,2,1), 'input')
+        s.output.plot(plt.subplot(1,2,2), 'output')
+        plt.tight_layout()
+        plt.show()

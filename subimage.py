@@ -20,11 +20,7 @@ def find_big_pixel(ri: RegionInfo):
     return pixel_size, pixels
 
 def solve_c444b776(img: Image):
-    remove_yellow = img.copy()
-    for i in range(img.shape[0]):
-        for j in range(img.shape[1]):
-            if img[i, j] != 4:
-                remove_yellow[i, j] = 0
+    remove_yellow = img.self_generate(lambda img, x, y: 0 if img[x, y] != 4 else 4)
     region = Region(remove_yellow)
     for ri in region.region_info:
         if ri.color == 4:
