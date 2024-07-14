@@ -8,11 +8,18 @@ from brain.move import *
 from brain.color import *
 from brain.paint import *
 from brain.numbers import *
+from brain.diff import *
+from brain.region_move import *
+from brain.completion import *
 
 class Sample:
-    def __init__(self, s):
-        self.input = Image(s['input'])
-        self.output = Image(s['output'])
+    def __init__(self, s, o=None):
+        if isinstance(s, dict):
+            self.input = Image(s['input'])
+            self.output = Image(s['output'])
+        else:
+            self.input = s
+            self.output = o
 
 class Data:
     def __init__(self, data):
@@ -38,10 +45,10 @@ def check_all_same(f, ss: List[Sample], k='none'):
             return None
     return p
 
-def find_common(f, ss: List[Sample]):
+def find_common(f, ss: List[Sample], k='none'):
     p = None
     for s in ss:
-        p0: Set = f(s.input, s.output)
+        p0: Set = f(s.input, s.output, k=k)
         if not p0:
             return None
         if p is None:
@@ -50,9 +57,9 @@ def find_common(f, ss: List[Sample]):
             p.intersection_update(p0)
     if not p:
         return None
-    if len(p) == 1:
-        return list(p)[0]
-    assert False, f'Too many common values: {p}'
+    if len(p) > 1:
+        print(f'{k} has Too many common values: {p}')
+    return list(p)[0]
 
 @dataclass
 class Concat:
@@ -117,29 +124,64 @@ class Composite:
     def __call__(self, img: Image) -> Image:
         return self.b(img, self.a(img))
 
+@dataclass
+class ConstInt:
+    value: int
+    def __call__(self, img: Image) -> int:
+        return self.value
+
 def find_common_pure_color(ss: List[Sample], k='none'):
     if not check_all(is_same_shape, ss):
         return None
     for s in ss:
         if not is_pure_color(s.output):
             return None
-        counter = color_counter(s.input)
+        counter = img_color_counter(s.input)
         if counter.most != s.output[0, 0]:
             return None
     return Composite(MostColor(), PureColor())
+
+def find_completion(ss: List[Sample], k='none'):
+    p = None
+    for s in ss:
+        p0 = find_completions(s.input, s.output, k)
+        if not p0:
+            return None
+        if p is None:
+            p = p0
+        else:
+            p.rotate_types.intersection_update(p0.rotate_types)
+    if not p:
+        return None
+    return p
+
+def find_scale_up(ss: List[Sample], k='none'):
+    scales = []
+    for sample in ss:
+        for scale in [2, 3, 4, 5]:
+            if is_scale_up(sample.input, sample.output, scale):
+                scales.append(scale)
+                break
+        else:
+            return None
+    if all(s == scales[0] for s in scales):
+        return Composite(ConstInt(scales[0]), ScaleUp())
+    color_counts = [ColorCount()(s.input) for s in ss]
+    if all(s == c for s, c in zip(scales, color_counts)):
+        return Composite(ColorCount(), ScaleUp())
+    print(f'Cannot find scale up pattern: {scales} for {k}')
+    return None
 
 def solver(data: Data, k='none'):
     p = find_common(find_rotate, data.train)
     if p is not None:
         print(f'Found pattern for {p.name}')
         return p
+    p = find_scale_up(data.train, k)
+    if p is not None:
+        print(f'Found pattern for scale up {p}')
+        return p
     for s in [2, 3]:
-        if check_all(lambda i, o: is_scale_up(i, o, s), data.train):
-            print(f'Found pattern for scale up {s}')
-            return lambda img: do_scale_up(img, s)
-        if check_all(lambda i, o: is_scale_down(i, o, s), data.train):
-            print(f'Found pattern for scale down {s}')
-            return lambda img: do_scale_down(img, s)
         p = check_all_same(lambda i, o, k: find_noised_scale_down(i, o, s, k), data.train, k)
         if p is not None:
             print(f'Found pattern for noised scale down {p}')
@@ -148,7 +190,7 @@ def solver(data: Data, k='none'):
     if p is not None:
         print(f'Found pattern for color transform {p}')
         return lambda img: do_color_transform(img, p)
-    p = check_all_same(find_crop, data.train)
+    p = find_common(find_crop, data.train, k)
     if p is not None:
         print(f'Found pattern for crop {p}')
         return p
@@ -160,6 +202,31 @@ def solver(data: Data, k='none'):
     if p is not None:
         print(f'Found pattern for pure color {p}')
         return p
+    p = find_common(find_region_fix_move, data.train, k=k)
+    if p is not None:
+        print(f'Found pattern for region fix move {p}')
+        return p
+    p = find_completion(data.train, k=k)
+    if p is not None:
+        print(f'{k}: Found pattern for completion {p}')
+        return p
+    p = check_all_same(partial_change_from_color_region, data.train, k=k)
+    if p is not None:
+        croped_ss = []
+        for s in data.train:
+            r = region_from_color(s.input, p)
+            i = s.input[r.top:r.bottom+1, r.left:r.right+1]
+            o = s.output[r.top:r.bottom+1, r.left:r.right+1]
+            croped_ss.append(Sample(i, o))
+        pp = check_all_same(find_color_transform, croped_ss)
+        if pp is not None:
+            print(f'Found pattern for partial color transform {pp}')
+            def f(img):
+                r = region_from_color(img, p)
+                sub_img = img[r.top:r.bottom+1, r.left:r.right+1]
+                diff = do_color_transform(sub_img, pp)
+                return do_move(diff, img, r.top, r.left)
+            return f
     return None
 
 def load_data(path) -> Dict[str, Data]:

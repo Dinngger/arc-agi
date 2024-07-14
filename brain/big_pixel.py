@@ -71,11 +71,13 @@ def find_noised_scale_down(a: Image, b: Image, s: int, k='none') -> Optional[Noi
                 return None
     return NoisedScaleDown(s, nc)
 
-def do_scale_up(img: Image, scale: int) -> Image:
-    h, w = img.height * scale, img.width * scale
-    def f(i, j):
-        return img[i // scale, j // scale]
-    return Image.generate(f, h, w)
+@dataclass
+class ScaleUp:
+    def __call__(self, img: Image, scale: int) -> Image:
+        h, w = img.height * scale, img.width * scale
+        def f(i, j):
+            return img[i // scale, j // scale]
+        return Image.generate(f, h, w)
 
 def do_scale_down(img: Image, scale: int) -> Image:
     h, w = img.height // scale, img.width // scale

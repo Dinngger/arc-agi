@@ -14,6 +14,11 @@ class Image:
         if not self.in_bound(index[0], index[1]):
             raise IndexError(f"Index {index} out of bound")
         return self.list[index[0]][index[1]]
+    def __setitem__(self, index, value):
+        assert len(index) == 2
+        if not self.in_bound(index[0], index[1]):
+            raise IndexError(f"Index {index} out of bound")
+        self.list[index[0]][index[1]] = value
     def __eq__(self, value) -> bool:
         return self.list == value.list
     def __repr__(self) -> str:
@@ -32,6 +37,3 @@ class Image:
     @staticmethod
     def zeros(h, w):
         return Image.generate(lambda i, j: 0, h, w)
-
-class Region:
-    pass
