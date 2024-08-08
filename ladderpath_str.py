@@ -6,35 +6,51 @@ from collections import Counter
 import random
 
 def find_ladderpath(s: str):
+    s = tuple([ord(c) for c in s])
     ss = [s]
-    cnt = 0
+    init_cnt = cnt = max(s)
+    print(f'init cnt = {cnt}')
     min_lp = len(s)
-    while ss:
-        assert cnt < 65, 'need a new coding method'
+    max_margin = 5
+    while True:
         new_ss = []
+        min_len = len(ss[0])
         for s in ss:
-            min_lp = min(min_lp, cnt + len(s))
+            min_lp = min(min_lp, cnt - init_cnt + len(s))
             all_2_grams = [s[i:i+2] for i in range(len(s)-1)]
             count = Counter(all_2_grams)
             for k,v in count.items():
                 if v > 1:
-                    new_s = s.replace(k, str(chr(cnt)))  # only A-z are allowed in s
-                    new_ss.append(new_s)
+                    if len(s) - v > min_len + max_margin:
+                        continue
+                    new_s = []
+                    jump_next = False
+                    for i in range(len(s)-1):
+                        if jump_next:
+                            jump_next = False
+                        elif s[i:i+2] == k:
+                            new_s.append(cnt)
+                            jump_next = True
+                        else:
+                            new_s.append(s[i])
+                    if not jump_next:
+                        new_s.append(s[-1])
+                    min_len = min(min_len, len(new_s))
+                    new_ss.append(tuple(new_s))
         if new_ss:
             ss = new_ss
-        lens = [len(s) for s in ss]
-        min_len = min(lens)
         sampled_ss = []
-        for margin in range(5):
+        for margin in range(max_margin):
             m_ss = [s for s in ss if len(s) == min_len + margin]
-            if len(m_ss) > 50:
-                m_ss = random.sample(m_ss, 50)
+            if len(m_ss) > 20:
+                m_ss = random.sample(m_ss, 20)
             sampled_ss.extend(m_ss)
         ss = sampled_ss
         if not new_ss:
-            min_lp = min(min_lp, cnt + min_len)
+            min_lp = min(min_lp, cnt - init_cnt + min_len)
             return min_lp
         cnt += 1
+        print(f'processed {cnt} levels, this level has {len(new_ss)} new strings, min_lp = {min_lp}')
 
 from sys import argv
 if len(argv) < 2:
