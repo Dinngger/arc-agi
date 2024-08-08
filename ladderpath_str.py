@@ -1,61 +1,75 @@
 # Author: Dinger
-# Data: 2024-08-07
-# Find the minimum ladderpath-index of a string.
+# Data: 2024-08-08
 
-from collections import Counter
-import random
 
-def find_ladderpath(s: str):
-    s = tuple([ord(c) for c in s])
-    ss = [s]
-    init_cnt = cnt = max(s)
-    print(f'init cnt = {cnt}')
-    min_lp = len(s)
-    max_margin = 5
+from collections import defaultdict
+from typing import List, Dict, Tuple
+
+def find_components(ss: List[str]) -> Tuple[Dict[str, List[Tuple[int, int]]], int]:
+    last_cs = defaultdict(list)
+    for idx_s, s in enumerate(ss):
+        for idx_c, c in enumerate(s):
+            last_cs[c].append((idx_s, idx_c))
+    level = 0
     while True:
-        new_ss = []
-        min_len = len(ss[0])
-        for s in ss:
-            min_lp = min(min_lp, cnt - init_cnt + len(s))
-            all_2_grams = [s[i:i+2] for i in range(len(s)-1)]
-            count = Counter(all_2_grams)
-            for k,v in count.items():
-                if v > 1:
-                    if len(s) - v > min_len + max_margin:
+        new_cs = defaultdict(list)
+        for c, idxs in last_cs.items():
+            l = len(c)
+            cs = defaultdict(list)
+            for idx_s, idx_c in idxs:
+                if idx_c + l >= len(ss[idx_s]):
+                    continue
+                cs[ss[idx_s][idx_c:idx_c+l+1]].append((idx_s, idx_c))
+            for k,v in cs.items():
+                if len(v) <= 1:
+                    continue
+                if len(set(i for i,_ in v)) == 1:
+                    idx_cs = [j for _,j in v]
+                    if max(idx_cs) - min(idx_cs) < l + 1:
                         continue
-                    new_s = []
-                    jump_next = False
-                    for i in range(len(s)-1):
-                        if jump_next:
-                            jump_next = False
-                        elif s[i:i+2] == k:
-                            new_s.append(cnt)
-                            jump_next = True
-                        else:
-                            new_s.append(s[i])
-                    if not jump_next:
-                        new_s.append(s[-1])
-                    min_len = min(min_len, len(new_s))
-                    new_ss.append(tuple(new_s))
-        if new_ss:
-            ss = new_ss
-        sampled_ss = []
-        for margin in range(max_margin):
-            m_ss = [s for s in ss if len(s) == min_len + margin]
-            if len(m_ss) > 20:
-                m_ss = random.sample(m_ss, 20)
-            sampled_ss.extend(m_ss)
-        ss = sampled_ss
-        if not new_ss:
-            min_lp = min(min_lp, cnt - init_cnt + min_len)
-            return min_lp
-        cnt += 1
-        print(f'processed {cnt} levels, this level has {len(new_ss)} new strings, min_lp = {min_lp}')
+                new_cs[k].extend(v)
+        if new_cs:
+            last_cs = new_cs
+        else:
+            break
+        level += 1
+    return last_cs, level
+
+def find_ladderpath2(ss: List[str]) -> int:
+    cs, level = find_components(ss)
+    # print(f'processing {level} level, ss: {ss}, cs: {cs}')
+    if level == 0:
+        return sum(len(s) for s in ss)
+    cs0 = max(cs.items(), key=lambda x: len(x[1]))
+    c = cs0[0]
+    assert len(c) == level + 1
+    idx_cs = [[] for _ in range(len(ss))]
+    for idx_s, idx_c in cs0[1]:
+        idx_cs[idx_s].append(idx_c)
+    new_ss = [c]
+    replaced_cnt = 0
+    for s, idxs in zip(ss, idx_cs):
+        last_i = 0
+        for i in sorted(idxs):
+            if i < last_i:
+                continue
+            if i > last_i:
+                new_ss.append(s[last_i:i])
+            replaced_cnt += 1
+            last_i = i + len(c)
+        if last_i < len(s):
+            new_ss.append(s[last_i:])
+    assert replaced_cnt > 1
+    if replaced_cnt > 2:
+        print(f'{c}({replaced_cnt-1}), ', end='')
+    else:
+        print(f'{c}, ', end='')
+    return find_ladderpath2(new_ss) + replaced_cnt - 1
 
 from sys import argv
 if len(argv) < 2:
     s = 'acsccsaascascaaaacssscscscasasacssacssaaaacsccsaascascaaaacssscscscasasacssacssaaa'
-    print(f'using default string: {s}')
+    s = 'MVVSAGPWSSEKAEMNILEINEKLRPQLAENKQQFRNLKERCFLTQLAGFLANRQKKYKYEECKDLIKFMLRNERQFKEEKLAEQLKQAEELRQYKVLVHSQERELTQLREKLREGRDASRSLNEHLQALLTPDEPDKSQGQDLQEQLAEGCRLAQQLVQKLSPENDEDEDEDVQVEEDEKVLESSAPREVQKAEESKVPEDSLEECAITCSNSHGPCDSIQPHKNIKITFEEDKVNSTVVVDRKSSHDECQDALNILPVPGPTSSATNVSMVVSAGPLSSEKAEMNILEINEKLRPQLAEKKQQFRSLKEKCFVTQLAGFLAKQQNKYKYEECKDLIKSMLRNELQFKEEKLAEQLKQAEELRQYKVLVHSQERELTQLREKLREGRDASRSLNEHLQALLTPDEPDKSQGQDLQEQLAEGCRLAQHLVQKLSPENDEDEDEDVQVEEDEKVLESSSPREMQKAEESKVPEDSLEECAITCSNSHGPCDSNQPHKNIKITFEEDKVNSSLVVDRESSHDECQDALNILPVPGPTSSATNVSMVVSAGPLSSEKAEMNILEINEKLRPQLAEKKQQFRSLKEKCFVTQVACFLAKQQNKYKYEECKDLLKSMLRNELQFKEEKLAEQLKQAEELRQYKVLVHSQERELTQLREKLREGRDASRSLNEHLQALLTPDEPDKSQGQDLQEQLAEGCRLAQHLVQKLSPENDNDDDEDVQVEVAEKVQKSSSPREMQKAEEKEVPEDSLEECAITCSNSHGPYDSNQPHRKTKITFEEDKVDSTLIGSSSHVEWEDAVHIIPENESDDEEEEEKGPVSPRNLQESEEEEVPQESWDEGYSTLSIPPERLASYQSYSSTFHSLEEQQVCMAVDIGRHRWDQVKKEDQEATGPRLSRELLAEKEPEVLQDSLDRCYSTPSVYLGLTDSCQPYRSAFYVLEQQRVGLAVDMDEIEKYQEVEEDQDPSCPRLSRELLAEKEPEVLQDSLDRCYSTPSGYLELPDLGQPYRSAVYSLEEQYLGLALDVDRIKKDQEEEEDQGPPCPRLSRELLEVVEPEVLQDSLDRCYSTPSSCLEQPDSCQPYRSSFYALEEKHVGFSLDVGEIEKKGKGKKRRGRRSKKKRRRGRKEGEEDQNPPCPRLSRELLAEKEPEVLQDSLDRWYSTPSVYLGLTDPCQPYRSAFYVLEQQRVGLAVDMDEIEKYQEVEEDQDPSCPRLSRELLAEKEPEVLQDSLDRCYSTPSGYLELPDLGQPYRSAVYSLEEQYLGLALDVDRIKKDQEEEEDQGPPCPRLSRELLEVVEPEVLQDSLDRCYSTPSSCLEQPDSCQPYRSSFYALEEKHVGFSLDVGEIEKKGKGKKRRGRRSKKKRRRGRKEGEEDQNPPCPRLNSVLMEVEEPEVLQDSLDRCYSTPSMYFELPDSFQHYRSVFYSFEEQHITFALDMDNSFFTLTVTSLHLVFQMGVIFPQ'
 else:
     s = argv[1]
-print('ladderpath-index =', find_ladderpath(s))
+print(f'ladderpath-index={find_ladderpath2([s])}')
