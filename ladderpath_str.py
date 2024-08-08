@@ -35,10 +35,18 @@ def find_components(ss: List[str]) -> Tuple[Dict[str, List[Tuple[int, int]]], in
         level += 1
     return last_cs, level
 
+components = []
 def find_ladderpath2(ss: List[str]) -> int:
+    global components
     cs, level = find_components(ss)
     # print(f'processing {level} level, ss: {ss}, cs: {cs}')
     if level == 0:
+        base_components = defaultdict(int)
+        for s in ss:
+            for c in s:
+                base_components[c] += 1
+        for c, n in base_components.items():
+            components.append((c, n))
         return sum(len(s) for s in ss)
     cs0 = max(cs.items(), key=lambda x: len(x[1]))
     c = cs0[0]
@@ -60,10 +68,7 @@ def find_ladderpath2(ss: List[str]) -> int:
         if last_i < len(s):
             new_ss.append(s[last_i:])
     assert replaced_cnt > 1
-    if replaced_cnt > 2:
-        print(f'{c}({replaced_cnt-1}), ', end='')
-    else:
-        print(f'{c}, ', end='')
+    components.append((c, replaced_cnt - 1))
     return find_ladderpath2(new_ss) + replaced_cnt - 1
 
 from sys import argv
@@ -72,4 +77,25 @@ if len(argv) < 2:
     s = 'MVVSAGPWSSEKAEMNILEINEKLRPQLAENKQQFRNLKERCFLTQLAGFLANRQKKYKYEECKDLIKFMLRNERQFKEEKLAEQLKQAEELRQYKVLVHSQERELTQLREKLREGRDASRSLNEHLQALLTPDEPDKSQGQDLQEQLAEGCRLAQQLVQKLSPENDEDEDEDVQVEEDEKVLESSAPREVQKAEESKVPEDSLEECAITCSNSHGPCDSIQPHKNIKITFEEDKVNSTVVVDRKSSHDECQDALNILPVPGPTSSATNVSMVVSAGPLSSEKAEMNILEINEKLRPQLAEKKQQFRSLKEKCFVTQLAGFLAKQQNKYKYEECKDLIKSMLRNELQFKEEKLAEQLKQAEELRQYKVLVHSQERELTQLREKLREGRDASRSLNEHLQALLTPDEPDKSQGQDLQEQLAEGCRLAQHLVQKLSPENDEDEDEDVQVEEDEKVLESSSPREMQKAEESKVPEDSLEECAITCSNSHGPCDSNQPHKNIKITFEEDKVNSSLVVDRESSHDECQDALNILPVPGPTSSATNVSMVVSAGPLSSEKAEMNILEINEKLRPQLAEKKQQFRSLKEKCFVTQVACFLAKQQNKYKYEECKDLLKSMLRNELQFKEEKLAEQLKQAEELRQYKVLVHSQERELTQLREKLREGRDASRSLNEHLQALLTPDEPDKSQGQDLQEQLAEGCRLAQHLVQKLSPENDNDDDEDVQVEVAEKVQKSSSPREMQKAEEKEVPEDSLEECAITCSNSHGPYDSNQPHRKTKITFEEDKVDSTLIGSSSHVEWEDAVHIIPENESDDEEEEEKGPVSPRNLQESEEEEVPQESWDEGYSTLSIPPERLASYQSYSSTFHSLEEQQVCMAVDIGRHRWDQVKKEDQEATGPRLSRELLAEKEPEVLQDSLDRCYSTPSVYLGLTDSCQPYRSAFYVLEQQRVGLAVDMDEIEKYQEVEEDQDPSCPRLSRELLAEKEPEVLQDSLDRCYSTPSGYLELPDLGQPYRSAVYSLEEQYLGLALDVDRIKKDQEEEEDQGPPCPRLSRELLEVVEPEVLQDSLDRCYSTPSSCLEQPDSCQPYRSSFYALEEKHVGFSLDVGEIEKKGKGKKRRGRRSKKKRRRGRKEGEEDQNPPCPRLSRELLAEKEPEVLQDSLDRWYSTPSVYLGLTDPCQPYRSAFYVLEQQRVGLAVDMDEIEKYQEVEEDQDPSCPRLSRELLAEKEPEVLQDSLDRCYSTPSGYLELPDLGQPYRSAVYSLEEQYLGLALDVDRIKKDQEEEEDQGPPCPRLSRELLEVVEPEVLQDSLDRCYSTPSSCLEQPDSCQPYRSSFYALEEKHVGFSLDVGEIEKKGKGKKRRGRRSKKKRRRGRKEGEEDQNPPCPRLNSVLMEVEEPEVLQDSLDRCYSTPSMYFELPDSFQHYRSVFYSFEEQHITFALDMDNSFFTLTVTSLHLVFQMGVIFPQ'
 else:
     s = argv[1]
-print(f'ladderpath-index={find_ladderpath2([s])}')
+print(f'ladderpath-index: {find_ladderpath2([s])}')
+
+levels = [[]]
+for c, n in reversed(components):
+    level = -1
+    for l, cs in enumerate(levels):
+        for b, bn in cs:
+            c: str
+            if c.find(b) >= 0:
+                level = l
+                break
+        if level >= 0:
+            break
+    if level < 0:
+        levels[-1].append((c, n))
+    elif level == 0:
+        levels = [[(c, n)]] + levels
+    else:
+        levels[level-1].append((c, n))
+
+levels_str = ' // '.join(', '.join(c if n == 1 else f'{c}({n})' for c, n in sorted(cs)) for cs in reversed(levels))
+print('{', levels_str, '}')
