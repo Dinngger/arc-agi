@@ -1,4 +1,5 @@
 import os
+import random
 import json
 from collections import Counter
 from dataclasses import dataclass
@@ -14,7 +15,36 @@ def get_data(name):
         data = json.load(f)
     return data['train']
 
-img = get_data('e40b9e2f')[0]['output']
+all_files = os.listdir('../ARC-AGI/data/training/')
+random_file = random.choice(all_files)
+name = random_file.split('.')[0]
+print(name)
+
+cmap = colors.ListedColormap(
+    ['#000000', '#0074D9','#FF4136','#2ECC40','#FFDC00',
+    '#AAAAAA', '#F012BE', '#FF851B', '#7FDBFF', '#870C25', '#FFFFFF'])
+norm = colors.Normalize(vmin=0, vmax=10)
+
+imgs = get_data(name)
+img = imgs[0]['output']
+
+def draw_img(ax: plt.Axes, img):
+    ax.imshow(img, cmap=cmap, norm=norm)
+    ax.grid(True,which='both',color='lightgrey', linewidth=0.5)
+    ax.set_yticks([x-0.5 for x in range(1+len(img))])
+    ax.set_xticks([x-0.5 for x in range(1+len(img[0]))])
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+
+def show_imgs(imgs):
+    n = len(imgs)
+    for i, io in enumerate(imgs):
+        ax = plt.subplot(n, 2, i*2+1)
+        draw_img(ax, io['input'])
+        ax = plt.subplot(n, 2, i*2+2)
+        draw_img(ax, io['output'])
+    plt.show()
+
 regions = []
 @dataclass
 class Pos:
@@ -26,10 +56,6 @@ class Pos:
         return hash((self.x, self.y))
     def norm(self) -> float:
         return (self.x ** 2 + self.y ** 2) ** 0.5
-cmap = colors.ListedColormap(
-    ['#000000', '#0074D9','#FF4136','#2ECC40','#FFDC00',
-    '#AAAAAA', '#F012BE', '#FF851B', '#7FDBFF', '#870C25', '#FFFFFF'])
-norm = colors.Normalize(vmin=0, vmax=10)
 @dataclass
 class Region:
     pos: Pos
