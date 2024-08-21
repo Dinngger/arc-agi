@@ -1,8 +1,9 @@
 # Author: Dinger
-# Data: 2024-08-14
+# Data: 2024-08-19
 
 import re
 import json
+import heapq
 from time import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -15,11 +16,8 @@ class Pattern:
     idxs: List[Tuple[int, int]]
     def key(self) -> int:
         return len(self.idxs)
-    def __eq__(self, value):
-        return self.key() == value.key()
     def __lt__(self, other):
-        return self.key() < other.key()
-    def __gt__(self, other):
+        # for big heap
         return self.key() > other.key()
 
 ID_t = int
@@ -206,29 +204,31 @@ def find_ladderpath(ss: List[str]) -> Tuple[int, int, int, List[Ladderon]]:
             process_start_time = time()
         new_level = False
         cs = [Pattern(c, 0, idxs) for c, idxs in css[level].items()]
-        cs = sorted(cs, key=lambda x: x.key(), reverse=True)
+        heapq.heapify(cs)
         while True:
             if not cs:
                 new_level = True
                 break
             max_cs = None
             updated_cs: List[Pattern] = []
-            left_cs = cs[:]
-            while max_cs is None or max_cs < left_cs[0]:
-                idxs = find_components_with_c(ss, luts, left_cs[0])
+            while max_cs is None or max_cs.key() < cs[0].key():
+                next_max = heapq.heappop(cs)
+                idxs = find_components_with_c(ss, luts, next_max)
                 if idxs is not None:
-                    new_c = Pattern(left_cs[0].s, len(luts), idxs)
+                    new_c = Pattern(next_max.s, len(luts), idxs)
                     updated_cs.append(new_c)
                     if max_cs is None or len(idxs) > len(max_cs.idxs):
                         max_cs = new_c
-                left_cs = left_cs[1:]
-                if len(left_cs) == 0:
+                if len(cs) == 0:
                     break
-            cs = sorted(updated_cs + left_cs, key=lambda x: x.key(), reverse=True)
+            if time() - component_end_time > component_end_time - component_start_time:
+                need_recompute = True
             if max_cs is None:
                 new_level = True
                 break
-            assert max_cs.s == cs[0].s
+            for c in updated_cs:
+                if c is not max_cs:
+                    heapq.heappush(cs, c)
             level_component_cnt += 1
             if level_component_cnt % 1000 == 0:
                 now_time = time()
@@ -237,9 +237,7 @@ def find_ladderpath(ss: List[str]) -> Tuple[int, int, int, List[Ladderon]]:
             ss, lut, new_lp = find_ladderpath_with_cs(ss, max_cs, components)
             lp += new_lp
             luts.append(lut)
-            cs = cs[1:]
-            if time() - component_end_time > component_end_time - component_start_time:
-                need_recompute = True
+            if need_recompute:
                 break
         if new_level:
             if level_component_cnt > 0:
@@ -253,9 +251,21 @@ def find_ladderpath(ss: List[str]) -> Tuple[int, int, int, List[Ladderon]]:
 
 def test_sample():
     test_s = 'acsccsaascascaaaacssscscscasasacssacssaaaacsccsaascascaaaacssscscscasasacssacssaaa'
+        # -> + acsccsaascascaaaacssscscscasasacssacssaaa x2
+        # -> acsccsaascascaaa scscscasas aaa + acss x3
+        # -> acsccsaa caaa scsc as aaa acss + scas x2
+        # -> ccsaa caaa scsc as aaa s scas + acs x2
+        # -> ccsaa c scsc as s scas acs + aaa x2
+        # -> ccs c scsc as s scas acs a + aa x2
+        # -> ccs c as s as acs a aa + sc x3
+        # -> c c as s as a a aa sc + cs x2
+        # -> c c s a a aa sc cs + as x2
+        # -> + c x4 + s x4 + a x5
+        # LP = (3-1)x2 + (2-1)x7 + (4 + 4 + 5) = 24
     test_lp, _, _, comps = find_ladderpath([test_s])
-    print(comps)
-    assert test_lp == 25, f'Test LP should be 25, but got {test_lp}'
+    for comp in comps:
+        print(comp)
+    assert test_lp == 24, f'Test LP should be 24, but got {test_lp}'
     print("Test passed")
 
 def save_specie_str():
@@ -266,16 +276,16 @@ def save_specie_str():
     
     # ECOLI -- strs: 4529, LP: 480530, order: 907347, size: 1387877, time: 1637.6894958019257s
     #                      LP: 480557, order: 907320, size: 1387877, time: 760.0485439300537s
+    #                      LP: 481140, order: 906737, size: 1387877, time: 70.4580147266388s
     # CAEEL -- strs: 4381, LP: 777104, order: 1533359, size: 2310463, time: 2489.757828950882s
     # YEAST -- strs: 6727, LP: 952637, order: 2072791, size: 3025428, time: 4152.814738988876s
-    # ARATH -- strs: 16215, 
-    # MOUSE -- strs: 17119, 
-    # HUMAN -- strs: 20386, 
+    # ARATH -- strs: 16215, LP: 2115053, order: 5243912, size: 7358965, time: 16218.29388475418s
+    # MOUSE -- strs: 17119, LP: 2914944, order: 6787283, size: 9702227, time: 1493.7561943531036s
+    # HUMAN -- strs: 20386, LP: 3295637, order: 8081036, size: 11376673, time: 2219.4237399101257s
 
     from sys import argv
     specie = argv[1]
     assert specie in ['ECOLI', 'CAEEL', 'YEAST', 'ARATH', 'MOUSE', 'HUMAN']
-    print(f"Compute LP of {specie}")
     specie_data = data[data['Species'] == specie]
     specie_strs = specie_data['Sequence'].tolist()
 
@@ -296,6 +306,6 @@ def compute_specie_lp():
         json.dump([c.asdict() for c in comps], f, indent=2)
 
 if __name__ == '__main__':
-    # test_sample()
+    test_sample()
     # save_specie_str()
-    compute_specie_lp()
+    # compute_specie_lp()
