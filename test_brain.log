@@ -1,0 +1,93 @@
+Found pattern for partial color transform {0: 2}
+6d75e8bb solved
+Found pattern for crop Crop(fix_or_ratio=True, dx=0, dy=0, height=2, width=2)
+d10ecb37 solved
+Found pattern for crop Crop(fix_or_ratio=True, dx=0, dy=6, height=3, width=3)
+5bd6f4ac solved
+Found pattern for pure color Composite(a=MostColor(), b=PureColor())
+5582e5ca solved
+no region found on 6f8cd79b
+Found pattern for crop Crop(fix_or_ratio=False, dx=0, dy=0, height=1, width=3)
+2dee498d solved
+Found pattern for UpDown
+68b16354 solved
+Found pattern for concat Concat(h_or_v=True, a=Nothing, b=Nothing)
+a416b8f3 solved
+Found pattern for Center
+3c9b0459 solved
+Found pattern for concat Concat(h_or_v=False, a=Nothing, b=UpDown)
+8be77c9e solved
+Found pattern for crop CropRegion(special_region=LeastColorRegion())
+c909285e solved
+Found pattern for concat Concat(h_or_v=True, a=Nothing, b=LeftRight)
+6d0aefbc solved
+Found pattern for crop CropRegion(special_region=MaxSizeRegion())
+be94b721 solved
+f9012d9b: Found pattern for completion Completion(rotate_types={Diagonal})
+[93mNo color found[0m
+[93mNo color found[0m
+[93mNo color found[0m
+[93mNo color found[0m
+Failed on f9012d9b
+expected:
+55
+52
+got:
+[93mNo color found[0m
+[93mNo color found[0m
+[93mNo color found[0m
+[93mNo color found[0m
+00
+00
+Found pattern for Right
+ed36ccf7 solved
+Found pattern for crop CropRegion(special_region=MaxSizeRegion())
+a87f7484 solved
+Found pattern for scale up Composite(a=ConstInt(value=2), b=ScaleUp())
+c59eb873 solved
+Found pattern for color transform {6: 2}
+b1948b0a solved
+Found pattern for partial color transform {1: 3}
+32597951 solved
+1f85a75f has Too many common values: {CropRegion(special_region=MaxSizeRegion()), CropRegion(special_region=LeastColorRegion())}
+Found pattern for crop CropRegion(special_region=MaxSizeRegion())
+1f85a75f solved
+no region found on 28e73c20
+Found pattern for Diagonal
+9dfd6313 solved
+Found pattern for scale up Composite(a=ColorCount(), b=ScaleUp())
+b91ae062 solved
+Found pattern for scale up Composite(a=ColorCount(), b=ScaleUp())
+ac0a08a4 solved
+Found pattern for concat Concat(h_or_v=True, a=Nothing, b=LeftRight)
+c9e6f938 solved
+Found pattern for color transform {7: 5}
+c8f0f002 solved
+9ecd008a: Found pattern for completion Completion(rotate_types={Right, LeftRight, Diagonal, Left, AntiDiagonal, UpDown, Center})
+9ecd008a solved
+Found pattern for Center
+6150a2bd solved
+Found pattern for crop CropRegion(special_region=MinSizeRegion())
+23b5c85d solved
+Found pattern for scale up Composite(a=ConstInt(value=3), b=ScaleUp())
+9172f3a0 solved
+Found pattern for region fix move RegionMove(dx=1, dy=0)
+25ff71a9 solved
+Found pattern for crop CropRegion(special_region=None)
+1cf80156 solved
+Found pattern for noised scale down NoisedScaleDown(scale=3, noise_color=5)
+5614dbcf solved
+Found pattern for concat Concat(h_or_v=False, a=UpDown, b=Nothing)
+4c4377d9 solved
+Found pattern for crop CropRegion(special_region=LeastColorRegion())
+0b148d64 solved
+Found pattern for Diagonal
+74dd1130 solved
+Found pattern for LeftRight
+67a3c6ac solved
+Found pattern for concat Concat(h_or_v=False, a=Nothing, b=UpDown)
+6fa7a44f solved
+Found pattern for color transform {8: 5, 5: 8}
+d511f180 solved
+Failures: 1 / 37
+Accuracy: 36 / 400

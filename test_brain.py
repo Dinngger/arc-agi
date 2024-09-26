@@ -9,7 +9,6 @@ if __name__ == '__main__':
     correct_cnt = 0
     failure_cnt = 0
     for k, v in data.items():
-        now_k = k
         f = solver(v, k=k)
         if f is not None:
             success = True
