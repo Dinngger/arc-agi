@@ -26,7 +26,6 @@ class Solver:
             lp_input = calc_ladderpath(img_input)
             lp_output = calc_ladderpath(img_output)
             self.rects.append((lp_input, lp_output))
-        self.relations = []
     @staticmethod
     def all_same(xs) -> bool:
         return all(x == xs[0] for x in xs)
@@ -55,11 +54,36 @@ class Solver:
             c = rects[0][same_shapes[0]].color
             special_color = self.update_same_value(special_color, c)
         return special_color
+    def find_direct_relations(self):
+        direct_relations = [[] for _ in self.rects]
+        self.relation_mat = []
+        for si, (rects_input, rects_output) in enumerate(self.rects):
+            relation_mat = np.zeros((len(rects_input), len(rects_output)))
+            for oi, ro in enumerate(rects_output):
+                for ii, ri in enumerate(rects_input):
+                    if ri.color == ro.color:
+                        direct_relations[si].append((ii, oi, 'same_color'))
+                        relation_mat[ii, oi] += 1
+                    if ri.shape.h == ro.shape.h:
+                        direct_relations[si].append((ii, oi,'same_height'))
+                        relation_mat[ii, oi] += 1
+                    if ri.shape.w == ro.shape.w:
+                        direct_relations[si].append((ii, oi,'same_width'))
+                        relation_mat[ii, oi] += 1
+                    if ri.pos.i == ro.pos.i:
+                        direct_relations[si].append((ii, oi, 'same_row'))
+                        relation_mat[ii, oi] += 1
+                    if ri.pos.j == ro.pos.j:
+                        direct_relations[si].append((ii, oi, 'same_col'))
+                        relation_mat[ii, oi] += 1
+            self.relation_mat.append(relation_mat)
+    def find_common_relations(self):
+        pass
     def get_solver(self):
-        out_shape = self.get_shapes([s[1].shape for s in self.samples])
-        print(f"Special color: {out_shape}")
-        # count_lines
-        # construct_rects, link_color(position order).
+        self.find_direct_relations()
+        # print(f"Direct relations: {self.direct_relations}")
+        # out_shape = self.get_shapes([s[1].shape for s in self.samples])
+        # print(f"Special color: {out_shape}")
 
 
 def test_ladderpath():
@@ -74,8 +98,9 @@ def test_ladderpath():
             for si in range(ns):
                 img_input = solver.samples[si][0]
                 img_output = solver.samples[si][1]
-                img_input.plot(plt.subplot(ns,2,si*2+1), f"Input - {len(solver.rects[si][0])}")
-                img_output.plot(plt.subplot(ns,2,si*2+2), f"Output - {len(solver.rects[si][1])}")
+                img_input.plot(plt.subplot(ns,3,si*3+1), f"Input - {len(solver.rects[si][0])}")
+                img_output.plot(plt.subplot(ns,3,si*3+2), f"Output - {len(solver.rects[si][1])}")
+                plt.subplot(ns,3,si*3+3).imshow(solver.relation_mat[si])
             plt.tight_layout()
             plt.show()
 

@@ -92,3 +92,52 @@ class ImageCopy:
                 if c != 10:
                     dst[x, y] = c
         return dst
+
+
+def aggregation(n, relation):
+    domains = -np.ones(n, dtype=int)
+    current_domain = -1
+    for i in range(n):
+        if domains[i] == -1:
+            current_domain += 1
+            domains[i] = current_domain
+            stack = [i]
+            while stack:
+                j = stack.pop()
+                for k in relation(i, j):
+                    if domains[k] == -1:
+                        domains[k] = current_domain
+                        stack.append(k)
+    return domains
+
+
+def neighbor_with_same_color(img: Image, i, j):
+    for ii, jj in [(i-1, j), (i+1, j), (i, j-1), (i, j+1)]:
+        if img.in_bound(ii, jj) and img[i, j] == img[ii, jj]:
+            yield ii, jj
+
+def aggregation2d(img: Image, relation) -> List[Polymer]:
+    h, w = img.shape
+    domains = -np.ones((h, w), dtype=int)
+    current_domain = -1
+    for i in range(h):
+        for j in range(w):
+            if domains[i, j] == -1:
+                current_domain += 1
+                domains[i, j] = current_domain
+                stack = [(i, j)]
+                while stack:
+                    k, l = stack.pop()
+                    for ii, jj in relation(img, k, l):
+                        if domains[ii, jj] == -1:
+                            domains[ii, jj] = current_domain
+                            stack.append((ii, jj))
+    polymers = []
+    for d in range(current_domain + 1):
+        pixels = []
+        for i in range(h):
+            for j in range(w):
+                if domains[i, j] == d:
+                    pixels.append(Position(i, j))
+        polymers.append(Polymer(img[pixels[0]], pixels, relation))
+    return polymers
