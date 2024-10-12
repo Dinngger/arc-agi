@@ -1,4 +1,6 @@
-from typing import List, Tuple, Optional, get_args
+from typing import Counter as CounterType
+from typing import List, Tuple, Union, Optional, get_args
+from collections import Counter
 from dataclasses import dataclass
 from copy import copy
 
@@ -74,153 +76,164 @@ class Image:
 
 
 class Polymer:
-    def __init__(self, color: Color, pixels: List[Position], relation):
+    def __init__(self, pixels: List[Position]):
         super().__init__()
-        self.color = color
         self.pixels = pixels
-        self.relation = relation
         min_i = min(p.i for p in pixels)
         min_j = min(p.j for p in pixels)
         max_i = max(p.i for p in pixels)
         max_j = max(p.j for p in pixels)
-        if (max_i - min_i + 1) * (max_j - min_j + 1) == len(pixels):
-            self.shape = Shape(max_i - min_i + 1, max_j - min_j + 1)
-        else:
-            self.shape = None
+        # if (max_i - min_i + 1) * (max_j - min_j + 1) == len(pixels):
+        self.shape = Shape(max_i - min_i + 1, max_j - min_j + 1)
+        self.pos = Position(min_i, min_j)
 
 
-class Pointer:
+class IRNode:
     # 可以指向所有可能的信息
     def __init__(self):
-        self.operands = []
-    def get_value(self):
+        self.operands: List[IRNode] = []
+        self.arguments = 0
+    def get(self):
         raise NotImplementedError
     def accept(self, visitor):
         visitor.visit(self)
     def copy(self):
         new_self = copy(self)
-        new_self.operands = [x.copy() if isinstance(x, Pointer) else x
+        new_self.operands = [x.copy() if isinstance(x, IRNode) else x
                              for x in self.operands]
         return new_self
 
-class BasicPointerVisitor:
-    def visit(self, pointer: Pointer):
+class BasicIRVisitor:
+    def visit(self, pointer: IRNode):
         for operand in pointer.operands:
             operand.accept(self)
 
-class Function(Pointer):
+class Context:
+    def set_context(self, context):
+        self.context = context
+    def __getitem__(self, index):
+        return self.context[index]
+
+class Arg(IRNode):
+    def __init__(self, context: Context, index: int):
+        super().__init__()
+        self.context = context
+        self.index = index
+    def get(self):
+        return self.context[self.index]
+    def __repr__(self):
+        return f'@Arg[{self.index}]'
+
+class Function(IRNode):
     def __init__(self):
         super().__init__()
         self.inverse_repr = False
+        self.arguments = 1
         self.return_type = None
+    def call(self, *args):
+        raise NotImplementedError
+    def get(self, x):
+        if self.arguments == 1:
+            return self.call(x)
+        else:
+            return FPartial(self, [x])
 
-class PApply(Pointer):
-    def __init__(self, function: Function, operand: Pointer):
+class FDefine(Function):
+    def __init__(self, arguments, context: Context, body: IRNode):
+        super().__init__()
+        self.arguments = arguments
+        self.context = context
+        self.operands.append(body)
+        self.return_type = body.return_type
+    def call(self, *args):
+        self.context.set_context(args)
+        return self.operands[0].get()
+    def __repr__(self):
+        return f'F{{{self.operands[0]}}}'
+
+class Apply(IRNode):
+    def __init__(self, function: Function, operand: IRNode):
         super().__init__()
         self.operands.append(function)
         self.operands.append(operand)
         self.return_type = function.return_type
-    def get_value(self):
-        return self.operands[0].get_value(self.operands[1].get_value())
+    def get(self):
+        return self.operands[0].get(self.operands[1].get())
     def __repr__(self):
         if isinstance(self.operands[0], FCompose):
             f1, f2 = self.operands[0].operands
-            return repr(PApply(f1, PApply(f2, self.operands[1])))
+            return repr(Apply(f1, Apply(f2, self.operands[1])))
         if self.operands[0].inverse_repr:
             return f'{self.operands[1]} {self.operands[0]}'
         else:
             return f'{self.operands[0]} {self.operands[1]}'
+
+class FPartial(Function):
+    def __init__(self, f, xs):
+        super().__init__()
+        self.operands.append(f)
+        self.args = xs
+        self.return_type = f.return_type
+    def call(self, x2):
+        f = self.operands[0]
+        if len(self.args) + 1 == f.arguments:
+            return f.call(*self.args, x2)
+        else:
+            return FPartial(f, self.args + [x2])
 
 class FCompose(Function):
     def __init__(self, function1: Function, function2: Function):
         super().__init__()
         self.operands.append(function1)
         self.operands.append(function2)
+        self.arguments = function2.arguments
         self.return_type = function1.return_type
-    def get_value(self, x):
-        return self.operands[0].get_value(self.operands[1].get_value(x))
+    def call(self, *args):
+        return self.operands[0].call(self.operands[1].call(*args))
     def __repr__(self):
         if isinstance(self.operands[0], FCompose):
             f1, f2 = self.operands[0].operands
-            return repr(PApply(f1, PApply(f2, self.operands[1])))
+            return repr(FCompose(f1, FCompose(f2, self.operands[1])))
         if self.operands[0].inverse_repr:
             return f'{self.operands[1]} {self.operands[0]}'
         else:
             return f'{self.operands[0]} {self.operands[1]}'
 
-class PAnySample(Pointer):
-    # 常量，代表所有样本，可用于任意样本。
-    def __init__(self):
-        super().__init__()
-        # self.return_type = Sample
-    def get_value(self):
-        raise ValueError('No sample is set.')
-    def __eq__(self, other):
-        return isinstance(other, PAnySample)
-    def __repr__(self):
-        return 'the Sample'
-
-class UseSample(BasicPointerVisitor):
-    def __init__(self, sample: List[Tuple[Image, Image]]):
-        super().__init__()
-        self.sample = sample
-    def visit(self, pointer: Pointer):
-        if isinstance(pointer, PAnySample):
-            raise ValueError('give me its father.')
-        for i in range(len(pointer.operands)):
-            if isinstance(pointer.operands[i], PAnySample):
-                pointer.operands[i] = PSample(self.sample)
-        super().visit(pointer)
-
-def use_sample(pointer: Pointer, sample: List[Tuple[Image, Image]]):
-    new_pointer = pointer.copy()
-    UseSample(sample).visit(new_pointer)
-    return new_pointer
-
-class PSample(Pointer):
-    def __init__(self, sample):
-        super().__init__()
-        self.sample = sample
-    def get_value(self):
-        return self.sample
-    def __eq__(self, other):
-        return isinstance(other, PSample) and self.sample is other.sample
-
-class PImage(Pointer):
+class FInput(Function):
     def __init__(self):
         super().__init__()
         self.return_type = Image
-
-class PInput(PImage):
-    def __init__(self, p_sample: PAnySample):
-        super().__init__()
-        self.operands.append(p_sample)
-    def get_value(self):
-        i, o = self.operands[0].get_value()
+    def call(self, sample: Tuple[Image, Image]):
+        i, o = sample
         return i
     def __repr__(self):
-        return f'Input Image in {self.operands[0]}'
+        return f'Input Image in'
     def __eq__(self, value):
-        return isinstance(value, PInput) and self.operands[0] == value.operands[0]
+        return isinstance(value, FInput)
 
-class POutput(PImage):
-    def __init__(self, p_sample: PAnySample):
+class FOutput(Function):
+    def __init__(self):
         super().__init__()
-        self.operands.append(p_sample)
-    def get_value(self):
-        i, o = self.operands[0].get_value()
+        self.return_type = Image
+    def call(self, sample: Tuple[Image, Image]):
+        i, o = sample
         return o
     def __repr__(self):
-        return f'Output Image in {self.operands[0]}'
+        return f'Output Image in'
     def __eq__(self, value):
-        return isinstance(value, POutput) and self.operands[0] == value.operands[0]
+        return isinstance(value, FOutput)
 
 class FColor(Function):
     def __init__(self):
         super().__init__()
-        self.return_type = Color
-    def get_value(self, operand: Polymer):
-        return operand.color
+        self.arguments = 2
+        self.return_type = Union[CounterType[Color], Color]
+    def call(self, img: Image, operand: Polymer):
+        colors = Counter([img[p] for p in operand.pixels])
+        if len(colors) == 1:
+            return colors.popitem()[0]
+        else:
+            return colors
     def __eq__(self, value):
         return isinstance(value, FColor)
     def __repr__(self):
@@ -230,71 +243,118 @@ class FShape(Function):
     def __init__(self):
         super().__init__()
         self.return_type = Shape
-    def get_value(self, operand: Image):
+    def call(self, operand: Image):
         return operand.shape
     def __eq__(self, value):
         return isinstance(value, FShape)
     def __repr__(self):
         return f'Shape of'
 
-class PConstant(Pointer):
+class Constant(IRNode):
     def __init__(self, value):
         super().__init__()
         self.value = value
         self.return_type = type(value)
-    def get_value(self):
+    def get(self):
         return self.value
     def __eq__(self, value):
-        return isinstance(value, PConstant) and self.value == value.value
+        return isinstance(value, Constant) and self.value == value.value
     def __repr__(self):
         return f'{self.value}'
 
-class PList(Pointer):
+class FConstant(Function):
+    def __init__(self, value):
+        super().__init__()
+        self.value = value
+        self.return_type = type(value)
+    def call(self, _):
+        return self.value
+    def __eq__(self, value):
+        return isinstance(value, FConstant) and self.value == value.value
+    def __repr__(self):
+        return f'{self.value}'
+
+class FPolymers(Function):
     def __init__(self):
         super().__init__()
-
-class PPolymers(PList):
-    def __init__(self, operand: PImage):
-        super().__init__()
-        self.operands.append(operand)
         self.return_type = List[Polymer]
         # self.relation = relation
-    def get_value(self):
-        return self.operands[0].get_value().polymers
+    def call(self, img: Image):
+        return img.polymers
     def __repr__(self):
-        return f'Polymers of {self.operands[0]}'
+        return f'Polymers of'
 
-class PMap(PList):
-    def __init__(self, operand: PList, function: Function):
+class FMap(Function):
+    def __init__(self, f: Function):
         super().__init__()
-        self.operands.append(operand)
-        self.operands.append(function)
-        self.return_type = List[function.return_type]
-    def get_value(self):
-        return [self.operands[1].get_value(x)
-                for x in self.operands[0].get_value()]
+        self.operands.append(f)
+        self.return_type = f.return_type
+    def call(self, xs: List):
+        return [self.operands[0].get(x) for x in xs]
 
 class FEqual(Function):
-    def __init__(self, operand):
+    def __init__(self):
         super().__init__()
         self.inverse_repr = True
         self.return_type = bool
-        self.operands.append(operand)
-    def get_value(self, other):
-        return self.operands[0].get_value() == other
+        self.arguments = 2
+    def call(self, x1, x2):
+        return x1 == x2
     def __repr__(self):
-        return f'is Equal to {self.operands[0]}'
+        return f'is Equal to'
 
-class PPick(Pointer):
-    def __init__(self, operand: PList, picker: Function):
+class PPick(IRNode):
+    def __init__(self, operand: IRNode, picker: Function):
         super().__init__()
         self.operands.append(operand)
         self.operands.append(picker)
         self.return_type = get_args(operand.return_type)[0]
-    def get_value(self):
-        xs = self.operands[0].get_value()
-        picked_xs = [x for x in xs if self.operands[1].get_value(x)]
+    def get(self):
+        xs = self.operands[0].get()
+        picked_xs = [x for x in xs if self.operands[1].get(x)]
         assert len(picked_xs) == 1
         return picked_xs[0]
     def __repr__(self):
         return f'One that picked from {self.operands[0]} that {self.operands[1]}'
+
+class FNeighbors(Function):
+    def __init__(self, raw=True, col=True, diag=False, same_color=True):
+        super().__init__()
+        self.raw = raw
+        self.col = col
+        assert raw or col
+        self.diag = diag
+        assert not diag or (raw and col)
+        assert same_color
+
+        self.return_type = List[Position]
+        self.arguments = 2
+    def call(self, img: Image, p: Position):
+        i, j = p.i, p.j
+        positions = []
+        neighbors = []
+        if self.raw:
+            neighbors += [(i, j-1), (i, j+1)]
+        if self.col:
+            neighbors += [(i-1, j), (i+1, j)]
+        if self.diag:
+            neighbors += [(i-1, j-1), (i-1, j+1), (i+1, j-1), (i+1, j+1)]
+        for ii, jj in neighbors:
+            if img.in_bound(ii, jj) and img[i, j] == img[ii, jj]:
+                positions.append(Position(ii, jj))
+        return positions
+
+class FCanCat(Function):
+    def __init__(self, vertical: bool):
+        super().__init__()
+        self.vertical = vertical
+        self.return_type = bool
+        self.arguments = 2
+    def call(self, img: Image, p1: Polymer, p2: Polymer):
+        same_color = FColor().call(img, p1) == FColor().call(img, p2)
+        can_cat_vertical = p1.shape.w == p2.shape.w and p1.pos.j == p2.pos.j and p1.pos.i + p1.shape.h == p2.pos.i
+        can_cat_horizontal = p1.shape.h == p2.shape.h and p1.pos.i == p2.pos.i and p1.pos.j + p1.shape.w == p2.pos.j
+        if self.vertical:
+            return can_cat_vertical and same_color
+        else:
+            return can_cat_horizontal and same_color

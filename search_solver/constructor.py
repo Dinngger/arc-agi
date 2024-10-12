@@ -79,7 +79,7 @@ def test_relation(fn):
     img.plot(ax1, f"{0}")
     fig.tight_layout()
 
-    polymers = aggregation2d(img, neighbor_with_same_color)
+    polymers = aggregation2d(img, FNeighbors())
 
     def f(i, j):
         # 同行、同列、同色、（某种）相邻、（某种）连通

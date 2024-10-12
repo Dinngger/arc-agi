@@ -94,7 +94,11 @@ class ImageCopy:
         return dst
 
 
-def aggregation(n, relation):
+def merge_polymers(polymers: List[Polymer]) -> Polymer:
+    return Polymer([p_p for p in polymers for p_p in p.pixels])
+
+def aggregation(img: Image, polymers: List[Polymer], relation: FCanCat) -> List[Polymer]:
+    n = len(polymers)
     domains = -np.ones(n, dtype=int)
     current_domain = -1
     for i in range(n):
@@ -104,19 +108,18 @@ def aggregation(n, relation):
             stack = [i]
             while stack:
                 j = stack.pop()
-                for k in relation(i, j):
-                    if domains[k] == -1:
+                # Too Slow!
+                for k in range(j+1, n):
+                    if domains[k] == -1 and relation.call(img, polymers[j], polymers[k]):
                         domains[k] = current_domain
                         stack.append(k)
-    return domains
+    results = []
+    for d in range(current_domain + 1):
+        ps = [polymers[i] for i in range(n) if domains[i] == d]
+        results.append(merge_polymers(ps))
+    return results
 
-
-def neighbor_with_same_color(img: Image, i, j):
-    for ii, jj in [(i-1, j), (i+1, j), (i, j-1), (i, j+1)]:
-        if img.in_bound(ii, jj) and img[i, j] == img[ii, jj]:
-            yield ii, jj
-
-def aggregation2d(img: Image, relation) -> List[Polymer]:
+def aggregation2d(img: Image, relation: FNeighbors) -> List[Polymer]:
     h, w = img.shape
     domains = -np.ones((h, w), dtype=int)
     current_domain = -1
@@ -125,13 +128,14 @@ def aggregation2d(img: Image, relation) -> List[Polymer]:
             if domains[i, j] == -1:
                 current_domain += 1
                 domains[i, j] = current_domain
-                stack = [(i, j)]
+                stack = [Position(i, j)]
                 while stack:
-                    k, l = stack.pop()
-                    for ii, jj in relation(img, k, l):
+                    p = stack.pop()
+                    for pp in relation.call(img, p):
+                        ii, jj = pp.i, pp.j
                         if domains[ii, jj] == -1:
                             domains[ii, jj] = current_domain
-                            stack.append((ii, jj))
+                            stack.append(pp)
     polymers = []
     for d in range(current_domain + 1):
         pixels = []
@@ -139,5 +143,17 @@ def aggregation2d(img: Image, relation) -> List[Polymer]:
             for j in range(w):
                 if domains[i, j] == d:
                     pixels.append(Position(i, j))
-        polymers.append(Polymer(img[pixels[0]], pixels, relation))
+        polymers.append(Polymer(pixels))
     return polymers
+
+def split_polymers(img: Image, polymers: List[Polymer]) -> List[Polymer]:
+    tmp_img = Image([[0 for _ in range(img.width)] for _ in range(img.height)])
+    for p in polymers:
+        for p_p in p.pixels:
+            tmp_img[p_p.i][p_p.j] = 1
+    result = aggregation2d(tmp_img, FNeighbors())
+
+def aggregate_to_image(polymers: List[Polymer]) -> Image:
+    # 由于Image是特殊概念，因此定义该函数
+    # 一个polymer对应一个像素
+    pass
