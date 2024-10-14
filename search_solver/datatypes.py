@@ -1,5 +1,5 @@
 from typing import Counter as CounterType
-from typing import List, Tuple, Union, Optional, get_args
+from typing import List, Tuple, Dict, Union, Optional, get_args
 from collections import Counter
 from dataclasses import dataclass
 from copy import copy
@@ -35,7 +35,7 @@ class Image:
         self.shape = Shape(len(list), len(list[0]))
         self.height = self.shape.h
         self.width = self.shape.w
-        self.polymers: List[Polymer] = []
+        self.polymers: Dict[Union[FNeighbors, 'FCanCat'], Polymer] = {}
     def in_bound(self, i, j):
         return 0 <= i < self.shape.h and 0 <= j < self.shape.w
     def __getitem__(self, index):
@@ -109,16 +109,20 @@ class BasicIRVisitor:
             operand.accept(self)
 
 class Context:
+    def __init__(self, arg_types):
+        self.arg_types = arg_types
+        self.context = None
     def set_context(self, context):
         self.context = context
     def __getitem__(self, index):
         return self.context[index]
 
-class Arg(IRNode):
+class PArg(IRNode):
     def __init__(self, context: Context, index: int):
         super().__init__()
         self.context = context
         self.index = index
+        self.return_type = self.context.arg_types[index]
     def get(self):
         return self.context[self.index]
     def __repr__(self):
@@ -156,9 +160,16 @@ class Apply(IRNode):
         super().__init__()
         self.operands.append(function)
         self.operands.append(operand)
+        self.inverse_repr = False
+        self.arguments = function.arguments - 1
         self.return_type = function.return_type
-    def get(self):
-        return self.operands[0].get(self.operands[1].get())
+    def get(self, arg=None):
+        if self.arguments == 0:
+            return self.operands[0].get(self.operands[1].get())
+        else:
+            return self.operands[0].get(self.operands[1].get()).get(arg)
+    def call(self, *args):
+        return self.operands[0].call(self.operands[1].get(), *args)
     def __repr__(self):
         if isinstance(self.operands[0], FCompose):
             f1, f2 = self.operands[0].operands
@@ -174,12 +185,14 @@ class FPartial(Function):
         self.operands.append(f)
         self.args = xs
         self.return_type = f.return_type
-    def call(self, x2):
+    def get(self, x2):
         f = self.operands[0]
         if len(self.args) + 1 == f.arguments:
             return f.call(*self.args, x2)
         else:
             return FPartial(f, self.args + [x2])
+    def __repr__(self):
+        return f'{self.operands[0]}({", ".join(repr(x) for x in self.args) + ", " if self.args else ""}...)'
 
 class FCompose(Function):
     def __init__(self, function1: Function, function2: Function):
@@ -189,7 +202,7 @@ class FCompose(Function):
         self.arguments = function2.arguments
         self.return_type = function1.return_type
     def call(self, *args):
-        return self.operands[0].call(self.operands[1].call(*args))
+        return self.operands[0].get(self.operands[1].call(*args))
     def __repr__(self):
         if isinstance(self.operands[0], FCompose):
             f1, f2 = self.operands[0].operands
@@ -250,7 +263,20 @@ class FShape(Function):
     def __repr__(self):
         return f'Shape of'
 
-class Constant(IRNode):
+class FShapeScale(Function):
+    def __init__(self, scale_h, scale_w):
+        super().__init__()
+        self.scale_h = scale_h
+        self.scale_w = scale_w
+        self.return_type = Shape
+    def call(self, operand: Shape):
+        return Shape(operand.h * self.scale_h, operand.w * self.scale_w)
+    def __eq__(self, value):
+        return isinstance(value, FShapeScale) and self.scale_h == value.scale_h and self.scale_w == value.scale_w
+    def __repr__(self):
+        return f'Scale {self.scale_h}x{self.scale_w} of'
+
+class PConstant(IRNode):
     def __init__(self, value):
         super().__init__()
         self.value = value
@@ -258,7 +284,7 @@ class Constant(IRNode):
     def get(self):
         return self.value
     def __eq__(self, value):
-        return isinstance(value, Constant) and self.value == value.value
+        return isinstance(value, PConstant) and self.value == value.value
     def __repr__(self):
         return f'{self.value}'
 
@@ -275,12 +301,12 @@ class FConstant(Function):
         return f'{self.value}'
 
 class FPolymers(Function):
-    def __init__(self):
+    def __init__(self, relation: Union['FNeighbors', 'FCanCat']):
         super().__init__()
+        self.relation = relation
         self.return_type = List[Polymer]
-        # self.relation = relation
     def call(self, img: Image):
-        return img.polymers
+        return img.polymers[self.relation]
     def __repr__(self):
         return f'Polymers of'
 
@@ -291,6 +317,17 @@ class FMap(Function):
         self.return_type = f.return_type
     def call(self, xs: List):
         return [self.operands[0].get(x) for x in xs]
+    def __repr__(self):
+        return f'Map {self.operands[0]} over'
+
+class FNot(Function):
+    def __init__(self):
+        super().__init__()
+        self.return_type = bool
+    def call(self, x):
+        return not x
+    def __repr__(self):
+        return f'not'
 
 class FEqual(Function):
     def __init__(self):
@@ -312,10 +349,49 @@ class PPick(IRNode):
     def get(self):
         xs = self.operands[0].get()
         picked_xs = [x for x in xs if self.operands[1].get(x)]
-        assert len(picked_xs) == 1
+        if len(picked_xs) != 1:
+            print(f'Warning: {len(picked_xs)} values picked from {self.operands[0]} that {self.operands[1]}')
         return picked_xs[0]
     def __repr__(self):
         return f'One that picked from {self.operands[0]} that {self.operands[1]}'
+
+class FMost(Function):
+    def __init__(self, strict: bool):
+        super().__init__()
+        self.strict = strict
+        if strict:
+            self.return_type = int
+        else:
+            self.return_type = List[int]
+    def call(self, xs: List):
+        counter = Counter(xs)
+        _, num = counter.most_common(1)[0]
+        picked = [x for x, n in counter.items() if n == num]
+        if self.strict:
+            assert len(picked) == 1
+            return picked[0]
+        return picked
+    def __repr__(self):
+        return f'Most {"one" if self.strict else "nums"} in'
+
+class FLeast(Function):
+    def __init__(self, strict: bool):
+        super().__init__()
+        self.strict = strict
+        if strict:
+            self.return_type = int
+        else:
+            self.return_type = List[int]
+    def call(self, xs: List):
+        counter = Counter(xs)
+        _, num = counter.most_common()[-1]
+        picked = [x for x, n in counter.items() if n == num]
+        if self.strict:
+            assert len(picked) == 1
+            return picked[0]
+        return picked
+    def __repr__(self):
+        return f'Least {"one" if self.strict else "nums"} in'
 
 class FNeighbors(Function):
     def __init__(self, raw=True, col=True, diag=False, same_color=True):
@@ -329,6 +405,11 @@ class FNeighbors(Function):
 
         self.return_type = List[Position]
         self.arguments = 2
+    def __eq__(self, value):
+        return isinstance(value, FNeighbors) and self.raw == value.raw and \
+            self.col == value.col and self.diag == value.diag
+    def __hash__(self):
+        return hash((self.raw, self.col, self.diag))
     def call(self, img: Image, p: Position):
         i, j = p.i, p.j
         positions = []
@@ -345,16 +426,36 @@ class FNeighbors(Function):
         return positions
 
 class FCanCat(Function):
-    def __init__(self, vertical: bool):
+    def __init__(self, cat_type: str, source_polymer_type: Union[FNeighbors, 'FCanCat']):
         super().__init__()
-        self.vertical = vertical
+        self.cat_type = cat_type
+        self.source_polymer_type = source_polymer_type
         self.return_type = bool
         self.arguments = 2
+    def __eq__(self, value):
+        return isinstance(value, FCanCat) and self.cat_type == value.cat_type and \
+            self.source_polymer_type == value.source_polymer_type
+    def __hash__(self):
+        return hash((self.cat_type, self.source_polymer_type))
+    def can_cat_vertical(self, p1: Polymer, p2: Polymer):
+        return p1.shape.w == p2.shape.w and p1.pos.j == p2.pos.j and \
+            (p1.pos.i + p1.shape.h == p2.pos.i or p2.pos.i + p2.shape.h == p1.pos.i)
+    def can_cat_horizontal(self, p1: Polymer, p2: Polymer):
+        return p1.shape.h == p2.shape.h and p1.pos.i == p2.pos.i and \
+            (p1.pos.j + p1.shape.w == p2.pos.j or p2.pos.j + p2.shape.w == p1.pos.j)
+    def can_cat_inner(self, p1: Polymer, p2: Polymer):
+        return (p1.pos.i <= p2.pos.i and p1.pos.j <= p2.pos.j and \
+                p1.pos.i + p1.shape.h >= p2.pos.i + p2.shape.h and p1.pos.j + p1.shape.w >= p2.pos.j + p2.shape.w) or \
+               (p2.pos.i <= p1.pos.i and p2.pos.j <= p1.pos.j and \
+                p2.pos.i + p2.shape.h >= p1.pos.i + p1.shape.h and p2.pos.j + p2.shape.w >= p1.pos.j + p1.shape.w)
     def call(self, img: Image, p1: Polymer, p2: Polymer):
         same_color = FColor().call(img, p1) == FColor().call(img, p2)
-        can_cat_vertical = p1.shape.w == p2.shape.w and p1.pos.j == p2.pos.j and p1.pos.i + p1.shape.h == p2.pos.i
-        can_cat_horizontal = p1.shape.h == p2.shape.h and p1.pos.i == p2.pos.i and p1.pos.j + p1.shape.w == p2.pos.j
-        if self.vertical:
-            return can_cat_vertical and same_color
+        if self.cat_type == 'vertical':
+            can_cat = self.can_cat_vertical(p1, p2)
+        elif self.cat_type == 'horizontal':
+            can_cat = self.can_cat_horizontal(p1, p2)
+        elif self.cat_type == 'inner':
+            can_cat = self.can_cat_inner(p1, p2)
         else:
-            return can_cat_horizontal and same_color
+            raise ValueError(f'Invalid cat_type: {self.cat_type}')
+        return can_cat and same_color

@@ -32,22 +32,17 @@ class Solver:
     def preanalysis(self):
         for img_input, img_output in self.samples:
             # 如何定义polymer的来源？以此做特殊性区分和求解过程记录。
-            polymers_input = aggregation2d(img_input, FNeighbors()) + \
-                             aggregation2d(img_input, FNeighbors(col=False)) + \
-                             aggregation2d(img_input, FNeighbors(raw=False)) + \
-                             aggregation2d(img_input, FNeighbors(diag=True))
-            # polymers_input += aggregation(img_input, polymers_input, FCanCat(True)) + \
-            #                   aggregation(img_input, polymers_input, FCanCat(False))
-            polymers_output = aggregation2d(img_output, FNeighbors()) + \
-                              aggregation2d(img_output, FNeighbors(col=False)) + \
-                              aggregation2d(img_output, FNeighbors(raw=False)) + \
-                              aggregation2d(img_output, FNeighbors(diag=True))
-            # polymers_output += aggregation(img_output, polymers_output, FCanCat(True)) + \
-            #                    aggregation(img_output, polymers_output, FCanCat(False))
-            img_input.polymers = polymers_input
-            img_output.polymers = polymers_output
+            for relation in [FNeighbors(), FNeighbors(col=False), FNeighbors(raw=False), FNeighbors(diag=True)]:
+                img_input.polymers[relation] = aggregation2d(img_input, relation)
+                img_output.polymers[relation] = aggregation2d(img_output, relation)
             # 聚合仅仅只是一种局部视角，还需要一种全局视角。
             # 全局区域划分方法：通过模糊分割、模糊聚合、及这二者的结合，识别对象。
+            img_input.polymers[FCanCat('inner', FNeighbors(diag=True))] = \
+                aggregation(img_input, img_input.polymers[FNeighbors(diag=True)], FCanCat('inner', FNeighbors(diag=True)))
+            # polymers_input += aggregation(img_input, polymers_input, FCanCat('vertical')) + \
+            #                   aggregation(img_input, polymers_input, FCanCat('horizontal'))
+            # polymers_output += aggregation(img_output, polymers_output, FCanCat('vertical')) + \
+            #                    aggregation(img_output, polymers_output, FCanCat('horizontal'))
     def what_we_need_now(self):
         if not self.working_outputs:
             def construct_output(shape_rule: Function):
@@ -58,16 +53,87 @@ class Solver:
                     self.working_outputs.append(Image(image))
             return FCompose(FShape(), FOutput()), construct_output
         return None, None
-    def check_special(self, values: Function, picked_idxs):
+    def check_sufficient(self, values: Function, picked_idxs):
         for sample, idxs in zip(self.samples, picked_idxs):
             xs = values.call(sample)
-            if len(idxs) != 1:  # 假设只选择了一个值
-                return False
-            i = idxs[0]
-            if not all(x != xs[i] for ii, x in enumerate(xs) if ii != i):
+            picked_values = [xs[i] for i in idxs]
+            if not all(x == picked_values[0] for x in picked_values):
+                print(f"Not all picked values are the same, they are {picked_values}")
                 return False
         return True
-    def find_special(self, values: Function, pick_func):
+    def check_necessary(self, values: Function, picked_idxs):
+        for sample, idxs in zip(self.samples, picked_idxs):
+            xs = values.call(sample)
+            picked_values = [xs[i] for i in idxs]
+            unpicked_values = [x for i, x in enumerate(xs) if i not in idxs]
+            necessary = False
+            for x in picked_values:
+                if x not in unpicked_values:
+                    necessary = True
+                    break
+            if not necessary:
+                print(f"None of the picked values are necessary")
+                return False
+        return True
+    def is_constant(self, values):
+        if all(x == values[0] for x in values):
+            return True
+        return False
+    def find_count_special(self, colors, picked_idxs):
+        print(f"try to find the pick rule for colors {colors}")
+        picked_colors = [[cs[i] for i in idxs] for cs, idxs in zip(colors, picked_idxs)]
+        for cs in picked_colors:
+            if not self.is_constant(cs):
+                print(f"Not all picked colors are the same, they are {cs}")
+                return None
+        counts = [Counter(cs) for cs in colors]
+        most_nums = [c.most_common(1)[0][1] for c in counts]
+        least_nums = [c.most_common()[-1][1] for c in counts]
+        most_colors = [[color for color, num in c.items() if num == most_num] for c, most_num in zip(counts, most_nums)]
+        least_colors = [[color for color, num in c.items() if num == least_num] for c, least_num in zip(counts, least_nums)]
+        if all(picked_cs[0] in cs for cs, picked_cs in zip(most_colors, picked_colors)):
+            if all(len(cs) == 1 for cs in most_colors):
+                print(f"Seems it's the most common color.")
+                return FMost(True)
+            else:
+                print(f"Seems it's one of the most common colors, but which one?")
+                return FMost(False)
+        if all(picked_cs[0] in cs for cs, picked_cs in zip(least_colors, picked_colors)):
+            if all(len(cs) == 1 for cs in least_colors):
+                print(f"Seems it's the least common color.")
+                return FLeast(True)
+            else:
+                print(f"Seems it's one of the least common colors, but which one?")
+                return FLeast(False)
+    def pick_one_from_two(self, values, picked_idxs):
+        if not all(len(idxs) == 1 for idxs in picked_idxs):
+            return None
+        if not all(len(cs) == 2 for cs in values):
+            return None
+        unpicked_values = [xs[1 - idxs[0]] for xs, idxs in zip(values, picked_idxs)]
+        if self.is_constant(unpicked_values):
+            print(f"Seems it's picking one that is not equal to {unpicked_values[0]}.")
+            context = Context([List[Color]])
+            return FDefine(1, context, PPick(PArg(context, 0), FCompose(FNot(), Apply(FEqual(), PConstant(unpicked_values[0])))))
+    def find_special_color(self, colors, picked_idxs):
+        picked_values = [[cs[i] for i in idxs] for cs, idxs in zip(colors, picked_idxs)]
+        if not all(self.is_constant(cs) for cs in picked_values):
+            return None
+        count_rule = self.find_count_special(colors, picked_idxs)
+        if count_rule is not None:
+            if count_rule.strict:
+                return count_rule
+            else:
+                colors = [count_rule.call(cs) for cs in colors]
+                picked_idxs = [[i for i, c in enumerate(cs) if c == picked_cs[0]] for cs, picked_cs in zip(colors, picked_values)]
+        pick_rule = self.pick_one_from_two(colors, picked_idxs)
+        if pick_rule:
+            if count_rule:
+                return FCompose(pick_rule, count_rule)
+            else:
+                return pick_rule
+    def find_special_polymer(self, values: Function, pick_func):
+        """ find why the picked values are different from others. """
         picked_idxs = []
         for si, sample in enumerate(self.samples):
             xs = values.call(sample)
@@ -75,23 +141,55 @@ class Solver:
             for i, x in enumerate(xs):
                 if pick_func(x, si):
                     picked_idx.append(i)
+            if not picked_idx:
+                return None
             picked_idxs.append(picked_idx)
-        # if self.check_special(PMap(values, FColor()), picked_idxs):
-        #     print(f"Seems it's from a special colored {values}")
-        #     picked_values = []
-        #     for sample, idxs in zip(self.samples, picked_idxs):
-        #         xs = use_sample(PMap(values, FColor()), sample).get_value()
-        #         picked_values.append(PConstant(xs[idxs[0]]))
-        #     color_rule = self.find_rule(picked_values)
-        #     if color_rule:
-        #         return PPick(values, FCompose(FEqual(color_rule), FColor()))
+        print(f"Picked some needed values for {values}, try to find the special rule.")
+        context = Context([Tuple[Image, Image]])
+        p_sample = PArg(context, 0)
+        p_img = Apply(values.operands[1], p_sample)
+        p_polymers = Apply(values, p_sample)
+        f_colors = FDefine(1, context, Apply(FMap(Apply(FColor(), p_img)), p_polymers))
+        if self.check_sufficient(f_colors, picked_idxs):
+            print(f"Seems it's from a special colored {values}")
+            if not self.check_necessary(f_colors, picked_idxs):
+                print(f"But it's not necessary.")
+                return None
+            colors = [f_colors.call(sample) for sample in self.samples]
+            color_pick_rule = self.find_special_color(colors, picked_idxs)
+            if color_pick_rule:
+                p_colors = Apply(FMap(Apply(FColor(), p_img)), p_polymers)
+                need_color = Apply(color_pick_rule, p_colors)
+                return FDefine(1, context, PPick(p_polymers, FCompose(Apply(FEqual(), need_color), Apply(FColor(), p_img))))
+            # color_rule = self.find_rule(picked_values)    # 这里需要在find_rule中排除当前颜色的来源，否则会陷入循环论证。
+            # if color_rule:
+            #     need_color = Apply(color_rule, p_sample)
+            #     p_colors = Apply(FMap(Apply(FColor(), p_img)), p_polymers)
+            #     return FDefine(1, context, PPick(p_polymers, Apply(Apply(FEqual(), need_color), p_colors)))
         # Cannot find special for this value
-    def check_rule(self, need_values, expect: Function):
-        for need_value, sample in zip(need_values, self.samples):
-            expect_value = expect.call(sample)
-            if need_value != expect_value:
-                return False
-        return True
+    def find_shape_scale(self, need_values, input_shapes):
+        """find if the need_values is a scale of input_shapes, assume need_values is larger than input_shapes."""
+        for ins, ns in zip(input_shapes, need_values):
+            if ns.h % ins.h != 0 or ns.w % ins.w != 0:
+                return None
+        h_scales = [need_values[si].h // input_shapes[si].h for si in range(len(self.samples))]
+        w_scales = [need_values[si].w // input_shapes[si].w for si in range(len(self.samples))]
+        if not self.is_constant(h_scales) or not self.is_constant(w_scales):
+            return None
+        return FShapeScale(h_scales[0], w_scales[0])
+    def find_shape_rule(self, need_values):
+        input_shape_rule = FCompose(FShape(), FInput())
+        input_shapes = [input_shape_rule.call(sample) for sample in self.samples]
+        if all(ins == ns for ins, ns in zip(input_shapes, need_values)):
+            return input_shape_rule
+        scale_rule = self.find_shape_scale(need_values, input_shapes)
+        if scale_rule:
+            return FCompose(scale_rule, input_shape_rule)
+        # 对于部分相似polymer，例如height一样，或者width一样，可以通过融合来形成需要的Image。
+        expect_polymer = self.find_special_polymer(FCompose(FPolymers(FCanCat('inner', FNeighbors(diag=True))), FInput()),
+                                lambda p, si: p.shape == need_values[si])
+        if expect_polymer:
+            return FCompose(FShape(), expect_polymer)
     def find_rule(self, need):
         # 寻找所需量的来源，确保一致性和唯一特殊性
         # 可以通过部分相似来构造来源，由于噪声、遮挡等原因造成形状不完全一致。
@@ -104,24 +202,18 @@ class Solver:
             need_type = need.return_type
         else: # List[Pointer]
             assert len(need) == len(self.samples)
-            need_values = [n.get_value() for n in need]
-            assert all(type(n) == type(need[0]) for n in need)
+            need_values = [n.call(s) for n, s in zip(need, self.samples)]
+            assert all(n.return_type == need[0].return_type for n in need)
             need_type = need[0].return_type
             print(f"Try to find the rule of {need}.")
 
-        expect = FConstant(need_values[0])
-        if self.check_rule(need_values, expect):
-            print(f"Seems it's from a Constant of {expect}")
-            return expect
+        if self.is_constant(need_values):
+            print(f"Seems it's from a Constant of {need_values[0]}")
+            return FConstant(need_values[0])
         if need_type == Shape:
-            expect = FCompose(FShape(), FInput())
-            if self.check_rule(need_values, expect):
-                return expect
-            # 对于部分相似polymer，例如height一样，或者width一样，可以通过融合来形成需要的Image。
-            expect_polymer = self.find_special(FCompose(FPolymers(), FInput()),
-                                    lambda p, si: p.shape == need_values[si])
-            if expect_polymer:
-                return FCompose(FShape(), expect_polymer)
+            shape_rule = self.find_shape_rule(need_values)
+            if shape_rule:
+                return shape_rule
         # Cannot find rule for this need.
     def get_solver(self):
         # 为所有训练和测试输入逐步构造输出
@@ -139,13 +231,15 @@ class Solver:
 
 def test_ladderpath():
     path = '../../ARC-AGI/data/training'
+    cnt = 0
     for fn in sorted(os.listdir(path)):
         with open(f'{path}/{fn}') as f:
             data = json.load(f)
             print(f"\nSolving {fn.rstrip('.json')}")
             solver = Solver(data['train'])
             if solver.get_solver():
-                continue
+                cnt += 1
+            continue
             ns = len(data['train'])
             plt.figure(f"{fn.rstrip('.json')}")
             for si in range(ns):
@@ -155,6 +249,8 @@ def test_ladderpath():
                 img_output.plot(plt.subplot(ns,2,si*2+2), f"Output")
             plt.tight_layout()
             plt.show()
+            break
+    print(f"Solved {cnt} tasks.")
 
 
 if __name__ == '__main__':
