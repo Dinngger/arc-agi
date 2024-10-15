@@ -263,6 +263,17 @@ class FShape(Function):
     def __repr__(self):
         return f'Shape of'
 
+class FShapeSize(Function):
+    def __init__(self):
+        super().__init__()
+        self.return_type = int
+    def call(self, operand: Shape):
+        return operand.h * operand.w
+    def __eq__(self, value):
+        return isinstance(value, FShapeSize)
+    def __repr__(self):
+        return f'Size of'
+
 class FShapeScale(Function):
     def __init__(self, scale_h, scale_w):
         super().__init__()
@@ -308,7 +319,7 @@ class FPolymers(Function):
     def call(self, img: Image):
         return img.polymers[self.relation]
     def __repr__(self):
-        return f'Polymers of'
+        return f'Polymers({self.relation}) of'
 
 class FMap(Function):
     def __init__(self, f: Function):
@@ -339,6 +350,34 @@ class FEqual(Function):
         return x1 == x2
     def __repr__(self):
         return f'is Equal to'
+
+class FSort(Function):
+    def __init__(self, reverse=False):
+        super().__init__()
+        self.reverse = reverse
+        self.return_type = List[int]
+    def call(self, xs: List):
+        return sorted(xs, reverse=self.reverse)
+    def __repr__(self):
+        return f'Sort{" in reverse" if self.reverse else ""}'
+
+class FPick(Function):
+    def __init__(self):
+        super().__init__()
+    def call(self, xs: List):
+        assert len(xs) == 1
+        return xs[0]
+    def __repr__(self):
+        return f'the only one from'
+
+class FFirst(Function):
+    def __init__(self):
+        super().__init__()
+        self.return_type = int
+    def call(self, xs: List):
+        return xs[0]
+    def __repr__(self):
+        return f'First from'
 
 class PPick(IRNode):
     def __init__(self, operand: IRNode, picker: Function):
@@ -410,6 +449,8 @@ class FNeighbors(Function):
             self.col == value.col and self.diag == value.diag
     def __hash__(self):
         return hash((self.raw, self.col, self.diag))
+    def __repr__(self):
+        return f'Neighbors{"R" if self.raw else ""}{"C" if self.col else ""}{"D" if self.diag else ""}'
     def call(self, img: Image, p: Position):
         i, j = p.i, p.j
         positions = []
@@ -437,6 +478,8 @@ class FCanCat(Function):
             self.source_polymer_type == value.source_polymer_type
     def __hash__(self):
         return hash((self.cat_type, self.source_polymer_type))
+    def __repr__(self):
+        return f'CanCat {self.cat_type} from {self.source_polymer_type}'
     def can_cat_vertical(self, p1: Polymer, p2: Polymer):
         return p1.shape.w == p2.shape.w and p1.pos.j == p2.pos.j and \
             (p1.pos.i + p1.shape.h == p2.pos.i or p2.pos.i + p2.shape.h == p1.pos.i)

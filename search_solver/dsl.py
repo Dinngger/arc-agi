@@ -1,5 +1,6 @@
 from math import ceil
 from typing import List, Tuple, Optional
+from collections import defaultdict
 from datatypes import *
 
 
@@ -147,13 +148,41 @@ def aggregation2d(img: Image, relation: FNeighbors) -> List[Polymer]:
     return polymers
 
 def split_polymers(img: Image, polymers: List[Polymer]) -> List[Polymer]:
-    tmp_img = Image([[0 for _ in range(img.width)] for _ in range(img.height)])
+    # only keep the spilted polymers that with different shape of the image.
+    result = []
     for p in polymers:
+        tmp_img = Image([[0 for _ in range(img.width)] for _ in range(img.height)])
         for p_p in p.pixels:
-            tmp_img[p_p.i][p_p.j] = 1
-    result = aggregation2d(tmp_img, FNeighbors())
+            tmp_img[p_p] = 1
+        new_polymers = aggregation2d(tmp_img, FNeighbors())
+        for new_p in new_polymers:
+            if tmp_img[new_p.pixels[0]] == 1:
+                continue
+            if new_p.shape == img.shape:
+                continue
+            result.append(new_p)
+    return result
 
-def aggregate_to_image(polymers: List[Polymer]) -> Image:
+def aggregate_to_image(img: Image, polymers: List[Polymer]) -> List[Image]:
     # 由于Image是特殊概念，因此定义该函数
     # 一个polymer对应一个像素
-    pass
+    rows = defaultdict(list)
+    cols = defaultdict(list)
+    for i, p in enumerate(polymers):
+        rows[(p.pos.i, p.shape.h)].append(i)
+        cols[(p.pos.j, p.shape.w)].append(i)
+    max_row = max(len(v) for v in rows.values())
+    max_col = max(len(v) for v in cols.values())
+    rows = [row for row in rows.values() if len(row) == max_row]
+    cols = [col for col in cols.values() if len(col) == max_col]
+    if len(rows) != max_col or len(cols) != max_row:
+        return []
+    print(f"found a image of ({max_col}, {max_row}) consisted by polymers")
+    rows = [sorted(row, key=lambda i: polymers[i].pos.j) for row in rows]
+    rows = sorted(rows, key=lambda row: polymers[row[0]].pos.i)
+    def color_func(i: int):
+        colors = Counter([img[p] for p in polymers[i].pixels])
+        c, num = colors.most_common(1)[0]
+        return c
+    img = [[color_func(i) for i in row] for row in rows]
+    return [Image(img)]

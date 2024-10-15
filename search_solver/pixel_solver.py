@@ -31,7 +31,7 @@ class Solver:
         self.preanalysis()
     def preanalysis(self):
         for img_input, img_output in self.samples:
-            # 如何定义polymer的来源？以此做特殊性区分和求解过程记录。
+            # 通过函数定义polymer的来源，以此做特殊性区分和求解过程记录。
             for relation in [FNeighbors(), FNeighbors(col=False), FNeighbors(raw=False), FNeighbors(diag=True)]:
                 img_input.polymers[relation] = aggregation2d(img_input, relation)
                 img_output.polymers[relation] = aggregation2d(img_output, relation)
@@ -39,10 +39,10 @@ class Solver:
             # 全局区域划分方法：通过模糊分割、模糊聚合、及这二者的结合，识别对象。
             img_input.polymers[FCanCat('inner', FNeighbors(diag=True))] = \
                 aggregation(img_input, img_input.polymers[FNeighbors(diag=True)], FCanCat('inner', FNeighbors(diag=True)))
-            # polymers_input += aggregation(img_input, polymers_input, FCanCat('vertical')) + \
-            #                   aggregation(img_input, polymers_input, FCanCat('horizontal'))
-            # polymers_output += aggregation(img_output, polymers_output, FCanCat('vertical')) + \
-            #                    aggregation(img_output, polymers_output, FCanCat('horizontal'))
+            img_input.polymers[FCanCat('image', FNeighbors(diag=True))] = \
+                aggregate_to_image(img_input, img_input.polymers[FNeighbors(diag=True)])
+            img_input.polymers[FCanCat('split', FNeighbors())] = \
+                split_polymers(img_input, img_input.polymers[FNeighbors()])
     def what_we_need_now(self):
         if not self.working_outputs:
             def construct_output(shape_rule: Function):
@@ -75,12 +75,25 @@ class Solver:
                 print(f"None of the picked values are necessary")
                 return False
         return True
+    def check_necessary_value(self, values: list, picked_idxs):
+        for xs, idxs in zip(values, picked_idxs):
+            picked_values = [xs[i] for i in idxs]
+            unpicked_values = [x for i, x in enumerate(xs) if i not in idxs]
+            necessary = False
+            for x in picked_values:
+                if x not in unpicked_values:
+                    necessary = True
+                    break
+            if not necessary:
+                print(f"None of the picked values are necessary")
+                return False
+        return True
     def is_constant(self, values):
         if all(x == values[0] for x in values):
             return True
         return False
     def find_count_special(self, colors, picked_idxs):
-        print(f"try to find the pick rule for colors {colors}")
+        print(f"try to find the pick rule of count for colors {colors}")
         picked_colors = [[cs[i] for i in idxs] for cs, idxs in zip(colors, picked_idxs)]
         for cs in picked_colors:
             if not self.is_constant(cs):
@@ -105,6 +118,10 @@ class Solver:
             else:
                 print(f"Seems it's one of the least common colors, but which one?")
                 return FLeast(False)
+    def pick_the_only_one(self, values, picked_idxs):
+        if all(len(vs) == 1 for vs in values):
+            print(f"Seems there are only one value to pick.")
+            return FPick()
     def pick_one_from_two(self, values, picked_idxs):
         if not all(len(idxs) == 1 for idxs in picked_idxs):
             return None
@@ -115,10 +132,22 @@ class Solver:
             print(f"Seems it's picking one that is not equal to {unpicked_values[0]}.")
             context = Context([List[Color]])
             return FDefine(1, context, PPick(PArg(context, 0), FCompose(FNot(), Apply(FEqual(), PConstant(unpicked_values[0])))))
-    def find_special_color(self, colors, picked_idxs):
+    def find_special_nominal_int(self, colors, picked_idxs):
+        pick_rule = self.pick_the_only_one(colors, picked_idxs)
+        if pick_rule:
+            return pick_rule
         picked_values = [[cs[i] for i in idxs] for cs, idxs in zip(colors, picked_idxs)]
+        if not all(isinstance(c, int) for cs in colors for c in cs):
+            print(f"Not all colors are integers")
+            print(f"pick {picked_values} from {colors}")
+            return None
         if not all(self.is_constant(cs) for cs in picked_values):
             return None
+        if self.is_constant([cs[0] for cs in picked_values]):
+            print(f"Seems it's picking the color {picked_values[0][0]}")
+            if self.check_necessary_value(colors, picked_idxs):
+                context = Context([List[Color]])
+                return FDefine(1, context, PPick(PArg(context, 0), Apply(FEqual(), PConstant(picked_values[0][0]))))
         count_rule = self.find_count_special(colors, picked_idxs)
         if count_rule is not None:
             if count_rule.strict:
@@ -132,6 +161,20 @@ class Solver:
                 return FCompose(pick_rule, count_rule)
             else:
                 return pick_rule
+    def find_special_scale_int(self, values, picked_idxs):
+        pick_rule = self.pick_the_only_one(values, picked_idxs)
+        if pick_rule:
+            return pick_rule
+        picked_values = [[vs[i] for i in idxs] for vs, idxs in zip(values, picked_idxs)]
+        print(f"try to find the pick rule of scale int.")
+        if not all(self.is_constant(cs) for cs in picked_values):
+            return None
+        if all(pvs[0] == max(vs) for vs, pvs in zip(values, picked_values)):
+            print(f"Seems it's the largest value.")
+            return FCompose(FFirst(), FSort(reverse=True))
+        if all(pvs[0] == min(vs) for vs, pvs in zip(values, picked_values)):
+            print(f"Seems it's the smallest value.")
+            return FCompose(FFirst(), FSort())
     def find_special_polymer(self, values: Function, pick_func):
         """ find why the picked values are different from others. """
         picked_idxs = []
@@ -144,11 +187,26 @@ class Solver:
             if not picked_idx:
                 return None
             picked_idxs.append(picked_idx)
-        print(f"Picked some needed values for {values}, try to find the special rule.")
+        pick_rule = self.pick_the_only_one([values.call(sample) for sample in self.samples], picked_idxs)
+        if pick_rule:
+            return FCompose(pick_rule, values)
+        print(f"Picked some needed things for {values}, try to find the special rule.")
         context = Context([Tuple[Image, Image]])
         p_sample = PArg(context, 0)
         p_img = Apply(values.operands[1], p_sample)
         p_polymers = Apply(values, p_sample)
+        f_size = FCompose(FMap(FCompose(FShapeSize(), FShape())), values)
+        if self.check_sufficient(f_size, picked_idxs):
+            print(f"Seems it's from a special size {values}")
+            if not self.check_necessary(f_size, picked_idxs):
+                print(f"But it's not necessary.")
+                return None
+            sizes = [f_size.call(sample) for sample in self.samples]
+            size_pick_rule = self.find_special_scale_int(sizes, picked_idxs)
+            if size_pick_rule:
+                need_size = Apply(size_pick_rule, Apply(FMap(FCompose(FShapeSize(), FShape())), p_polymers))
+                return FDefine(1, context, PPick(p_polymers, FCompose(Apply(FEqual(), need_size), FCompose(FShapeSize(), FShape()))))
+
         f_colors = FDefine(1, context, Apply(FMap(Apply(FColor(), p_img)), p_polymers))
         if self.check_sufficient(f_colors, picked_idxs):
             print(f"Seems it's from a special colored {values}")
@@ -156,7 +214,7 @@ class Solver:
                 print(f"But it's not necessary.")
                 return None
             colors = [f_colors.call(sample) for sample in self.samples]
-            color_pick_rule = self.find_special_color(colors, picked_idxs)
+            color_pick_rule = self.find_special_nominal_int(colors, picked_idxs)
             if color_pick_rule:
                 p_colors = Apply(FMap(Apply(FColor(), p_img)), p_polymers)
                 need_color = Apply(color_pick_rule, p_colors)
@@ -186,7 +244,19 @@ class Solver:
         if scale_rule:
             return FCompose(scale_rule, input_shape_rule)
         # 对于部分相似polymer，例如height一样，或者width一样，可以通过融合来形成需要的Image。
+        expect_polymer = self.find_special_polymer(FCompose(FPolymers(FNeighbors(diag=True)), FInput()),
+                                lambda p, si: FShapeScale(2, 2).call(p.shape) == need_values[si])
+        if expect_polymer:
+            return FCompose(FShapeScale(2, 2), FCompose(FShape(), expect_polymer))
         expect_polymer = self.find_special_polymer(FCompose(FPolymers(FCanCat('inner', FNeighbors(diag=True))), FInput()),
+                                lambda p, si: p.shape == need_values[si])
+        if expect_polymer:
+            return FCompose(FShape(), expect_polymer)
+        expect_polymer = self.find_special_polymer(FCompose(FPolymers(FCanCat('image', FNeighbors(diag=True))), FInput()),
+                                lambda p, si: p.shape == need_values[si])
+        if expect_polymer:
+            return FCompose(FShape(), expect_polymer)
+        expect_polymer = self.find_special_polymer(FCompose(FPolymers(FCanCat('split', FNeighbors())), FInput()),
                                 lambda p, si: p.shape == need_values[si])
         if expect_polymer:
             return FCompose(FShape(), expect_polymer)
