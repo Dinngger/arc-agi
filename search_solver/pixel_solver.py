@@ -261,7 +261,7 @@ class Solver:
         if expect_polymer:
             return FCompose(FShape(), expect_polymer)
     def find_rule(self, need):
-        # 寻找所需量的来源，确保一致性和唯一特殊性
+        # 寻找所需量的来源，确保一致性和唯一特殊性。
         # 可以通过部分相似来构造来源，由于噪声、遮挡等原因造成形状不完全一致。
         if isinstance(need, Function):
             print(f"Try to find the rule of the {need} samples.")
@@ -296,7 +296,7 @@ class Solver:
                 print(f"Cannot find the rule.")
                 return False
             now_need, op = self.what_we_need_now()
-        return True
+        return False
 
 
 def test_ladderpath():
@@ -309,7 +309,7 @@ def test_ladderpath():
             solver = Solver(data['train'])
             if solver.get_solver():
                 cnt += 1
-            continue
+                continue
             ns = len(data['train'])
             plt.figure(f"{fn.rstrip('.json')}")
             for si in range(ns):
